@@ -1,0 +1,24 @@
+# .gitignore for the PUBLIC repo (Ayre-Public).
+# The public repo's root == the contents of Ayre-USB/, so these rules drop the
+# Ayre-USB/ prefix used by the private repo's .gitignore.
+
+# --- Machine-local / personal (never commit) ---
+.claude/
+config/user_settings.json
+ayre_workspace/
+
+# --- Large binaries: come from the GitHub Releases page, not git (see USB_PREP.md) ---
+# Keep the folders (and their README placeholders); ignore the actual binaries.
+bin/*
+!bin/README.md
+python/*
+!python/README.md
+
+# --- Model weights: user-supplied, never in git ---
+*.gguf
+*.bin
+*.safetensors
+
+# --- Python build artifacts ---
+__pycache__/
+*.py[cod]

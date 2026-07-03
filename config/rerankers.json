@@ -1,0 +1,20 @@
+{
+  "_comment": "Registry of RAG reranker models. These files live in models/ but are NOT chat models -- they are excluded from the chat-model dropdown by discover_chat_models() in config.py. The 'reason' field is shown to the user in the UI when a reranker appears as a non-selectable entry in the model list.",
+
+  "items": [
+    {
+      "id": "bge-reranker-v2-m3-568m",
+      "file": "bge-reranker-v2-m3.gguf",
+      "approx_gb": 0.6,
+      "tiers": ["high", "ultra", "max"],
+      "reason": "RAG reranker (registered in config/rerankers.json) — Ayre uses this internally to rank search results. It is not a chat model. To use it as a primary model, remove it from rerankers.json."
+    },
+    {
+      "id": "bge-reranker-base-278m",
+      "file": "bge-reranker-base.gguf",
+      "approx_gb": 0.3,
+      "tiers": ["low", "mid"],
+      "reason": "RAG reranker (registered in config/rerankers.json) — Ayre uses this internally to rank search results. It is not a chat model. To use it as a primary model, remove it from rerankers.json."
+    }
+  ]
+}

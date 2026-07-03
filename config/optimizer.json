@@ -1,0 +1,82 @@
+{
+  "_comment": "Optimizer (auto-tuner) knobs. Variable-first: every memory-budget and footprint-estimate constant lives here WITH a rationale, never as a code literal. The fit calculator (ayre_setup/fit.py) reads these; each value is individually reviewable/tweakable (modular-formula-registry).",
+
+  "budget": {
+    "basis": "total",
+    "basis_rationale": "Budget against total RAM minus an OS buffer, not against available RAM. This reflects machine capability rather than session state -- the same machine always gets the same budget regardless of what apps happen to be open. The 'close other apps' tip handles session state as a performance concern, not a planning input.",
+
+    "ram_headroom_gib": 4.0,
+    "ram_headroom_fraction": 0.25,
+    "ram_headroom_rationale": "OS buffer: leave the LARGER of 4.0 GiB or 25% of total RAM as the assumed Windows baseline (OS + background processes + browser). Scales with machine size: 16 GB -> 4.0 GiB buffer -> 12 GiB budget; 32 GB -> 8.0 GiB buffer -> 24 GiB budget.",
+
+    "vram_headroom_gib": 0.7,
+    "vram_headroom_rationale": "Leave 0.7 GiB VRAM for the desktop compositor/display (a laptop GPU also drives the screen). nvidia-smi 'free' already nets out current use; this is extra margin on top."
+  },
+
+  "footprint": {
+    "compute_overhead_gib": 1.0,
+    "compute_overhead_rationale": "Flat estimate for llama.cpp compute/scratch buffers + runtime overhead beyond weights and KV cache. Coarse seed; refine against measured RSS on the dev boxes.",
+
+    "kv_bytes_per_element": { "f16": 2.0, "q8_0": 1.0625, "q4_0": 0.5625, "q4_1": 0.625, "q5_0": 0.6875, "q5_1": 0.75 },
+    "kv_bytes_per_element_rationale": "Bytes per KV element by cache precision (f16=16bpw, q8_0=8.5bpw, q4_0=4.5bpw, ...). The fit calc scales the FP16 per-token KV estimate by (this / 2.0). Unknown precisions fall back to f16 (2.0) with a warning.",
+
+    "default_per_token_kv_bytes_fp16": 98304,
+    "default_per_token_kv_rationale": "KV bytes/token @ FP16 for Qwen3-30B-A3B: 48 layers x 4 KV heads x 128 head_dim x 2 (K+V) x 2 bytes = 98304 (96 KiB). MODEL-SPECIFIC fallback only -- the solver/fit now read this from GGUF metadata (ayre_setup/gguf.py) for universal-model-support. Used only if the GGUF can't be parsed."
+  },
+
+  "solver": {
+    "auto_apply_on_start": true,
+    "auto_apply_rationale": "When true, `start` auto-applies the solver's GPU/CPU split + right-sized context (rationale shown, user-overridable) instead of the all-CPU fallback. Flip to false for advisory-only.",
+
+    "active_preset": "max_context",
+    "active_preset_rationale": "Which optimizer preset `start` applies by default (user-control-is-core; a per-machine override lands in A2/A3). Presets differ only in how they trade context WINDOW against GPU RESIDENCY -- see `presets`. Must be a key in `presets`; an unknown value falls back to 'max_context' with a warning. Each preset carries a human-facing `label` for the UI; this value is the stable id, not the label.",
+
+    "presets": {
+      "max_context": {
+        "label": "Max Context",
+        "context_cap_tokens": null,
+        "offload_goal": "fit",
+        "rationale": "Maximum context (quality-first): plan for the model's full trained-max context and make it FIT by splitting layers across GPU+RAM. Largest window, but on a big model most layers end up CPU-resident (slower, lower GPU use). Context and KV precision are never traded for speed."
+      },
+      "balanced": {
+        "label": "Balanced",
+        "context_cap_tokens": 32768,
+        "offload_goal": "fit",
+        "rationale": "Middle ground: cap context at 32K so the KV cache is far smaller than trained-max, letting more layers stay GPU-resident than Max Context while keeping a window generous enough for most work."
+      },
+      "speed": {
+        "label": "Speed",
+        "context_cap_tokens": 16384,
+        "offload_goal": "full_gpu",
+        "rationale": "Speed first: size context down (16K) and REQUIRE the whole model to be GPU-resident (no CPU layers) so decode runs at full GPU throughput. If the model can't fit entirely in VRAM even at the floor context, it degrades to a split (like Balanced) and warns."
+      }
+    },
+    "presets_rationale": "Selectable optimizer policies (variable-first, user-control-is-core). Each preset has a stable key, a human-facing `label`, a context cap, and an `offload_goal`: 'fit' = maximize the GPU layer count that fits at the largest feasible context, splitting GPU+RAM (context-led -- Max Context/Balanced); 'full_gpu' = require ALL layers on GPU and step context down toward the floor until the whole model fits VRAM (throughput-led -- Speed). context_cap_tokens: null = the model's GGUF trained max. Add or tune presets here without touching solver.py.",
+
+    "context_floor_tokens": 8192,
+    "context_floor_rationale": "User-chosen: the solver may shrink context to fit (or, for Speed, to keep the model fully on GPU), but NEVER below this usable minimum (chats stay coherent). Shared across all presets. Tune freely.",
+
+    "allow_yarn_extension": false,
+    "allow_yarn_extension_rationale": "false = never plan context beyond the model's trained max (YaRN extension can degrade quality -- against effectiveness-first). Set true to allow a preset's cap to exceed n_ctx_train. Shared across all presets.",
+
+    "context_search_step_tokens": 2048,
+    "context_search_rationale": "Granularity for stepping context down toward the floor when the full window won't fit (or, for Speed, to find the largest fully-GPU-resident window). Shared across all presets.",
+
+    "gpu_overhead_base_gib": 0.2,
+    "gpu_overhead_base_rationale": "Flat VRAM reserved for llama.cpp's CUDA compute/context scratch buffers, independent of context. Calibrated 2026-07-01 against measured VRAM on the 3070 Ti laptop (qwen3-8b, 3 presets): the old 0.6 seed over-reserved by a near-constant ~0.85 GiB vs nvidia-smi (predicted use minus measured, roughly context-independent -> a base-term error, not the per-1k term). Trimmed 0.6 -> 0.2 to reclaim ~0.4 GiB (~5% of an 8 GB card) while intentionally still over-reserving ~5% (residual 0.42-0.51 GiB across presets) as a safety cushion -- prediction stays >= reality, so no load-time OOM. Single-box/single-model calibration; re-check against the desktop A/B before treating as final.",
+
+    "gpu_overhead_per_1k_ctx_gib": 0.01,
+    "gpu_overhead_per_1k_ctx_rationale": "Context-aware component of the CUDA compute/scratch reservation (caveat B4): compute buffers grow with sequence length, so a flat overhead under-reserves at giant context and risks a load-time VRAM OOM (the offline-test mid-generation crash). Reserve this many GiB per 1024 tokens of context on top of the base: e.g. +0.16 GiB @16K, +0.32 GiB @32K, ~+2.6 GiB @256K. Conservative seed -- calibrate against measured VRAM (caveats E1/E2). Set 0 for the old flat behavior.",
+
+    "manual_override": {
+      "cpu_bound_warn_pct": 60,
+      "cpu_bound_warn_rationale": "When the user MANUALLY pins n_gpu_layers below what would fit at their context, warn that the GPU is underused (CPU-bound, slower decode) only if the resulting GPU-resident fraction is below this %. Above it, leaving a couple of layers on the CPU is a reasonable safety margin, not a mistake -- no warning. Only fires when the user left GPU-fittable headroom on the table (if that's all that fits, it's the machine, not the choice, and the fit/preset path already covers it). Tune to trade warning noise vs coaching."
+    },
+    "manual_override_rationale": "Adverse-effect thresholds for the MANUAL override path (A2): the user may set context and/or n_gpu_layers directly (persisted per-machine in config/user_settings.json -> optimizer). The solver honors the exact choice (user-control-is-core) and evaluates the real fit, warning -- never silently 'fixing' -- when the choice is harmful: VRAM/load-time OOM (layers won't allocate), disk spill (CPU-side weights exceed RAM -> thrash), or CPU-bound slowness (GPU left idle, threshold above). Budgets/overhead reuse the same knobs as the auto path; only the warning threshold lives here."
+  },
+
+  "gate": {
+    "on_over_budget": "warn",
+    "on_over_budget_rationale": "Step-4 fit-gate policy when the solver verdict is over_budget (weights would stream from disk -- thrash). 'warn' = surface the hardware cost and launch anyway (user-control; the default). 'refuse' = block the launch unless forced (CLI --force); the UI reports the cost and does not start. 'allow' = launch silently (not recommended -- defeats protect-end-user-hardware)."
+  }
+}

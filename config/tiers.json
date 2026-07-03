@@ -1,0 +1,113 @@
+{
+  "_comment": "Seeded hardware-tier profiles. RESOLVED 2026-06-14 (see Ayre_Project_Plan.md 'Hardware tiers'). All values are TUNABLE config, not code literals. Every tier/threshold carries a 'rationale' so a tester can see WHY their machine landed where it did and revise with real data. Cut points are stored ABSOLUTE and do NOT auto-adjust; loading a model whose footprint differs from these assumptions must raise a review/recalculate DIALOGUE (user-control), not change silently. REFRAMED 2026-06-23: tiers shifted up one -- the 8GB laptop is now MID (Qwen3-8B), the 16GB desktop is HIGH (Qwen3-30B-A3B offload), and LOW is a FUTURE sub-8GB target. EXTENDED 2026-06-23: split the old open-ended HIGH band into HIGH [16,24) = 30B offload (desktop validated), ULTRA [24,32) = 30B fully resident + concurrent-agent headroom (seed, not validated), and a new top tier MAX [32,inf) = bigger-than-30B / workstation (FUTURE, designed-not-built, no hardware to validate yet). Bands are half-open [lo, hi): a card matches when vram >= lo and vram < hi (hi=null means open-ended). NOTE 2026-06-24: default_model removed from all tiers -- Auto now uses _pick_best_fitting_model() in config.py (largest GGUF that fits without disk-thrash).",
+
+  "axis": {
+    "spine": "vram",
+    "ram_role": "veto",
+    "cpu_role": "informational",
+    "rationale": "VRAM is the gradient. RAM is a veto/downgrade check that enforces the hard floor but is not its own gradient. CPU affects speed not feasibility (moot under effectiveness-over-speed)."
+  },
+
+  "floor": {
+    "type": "computed",
+    "rationale": "Not a fixed VRAM number. The floor is reached when VRAM+RAM together cannot hold weights + KV + compute buffers + OS overhead. Below it: warn and recommend a smaller model; never pretend to run."
+  },
+
+  "fixed_toggles_all_tiers": {
+    "memory": true,
+    "rag": true,
+    "web": false,
+    "agents": false,
+    "_note": "All user-overridable. Web is greyed out while Agents is OFF (dependent-toggle rule)."
+  },
+
+  "tiers": {
+    "low": {
+      "vram_band_gb": [0, 8],
+      "band_label": "floor -> ~8GB",
+      "status": "FUTURE / designed -- no sub-8GB hardware validated yet",
+      "meaning": "lighter hardware than the 8GB baseline; the 'improve to work on low tier later' target",
+      "context": { "tokens": 32768, "kv_precision": "q8_0", "fallback_tokens": 16384, "rationale": "Provisional ~16-32K @ q8_0; settle against the chosen small model's GGUF when built." },
+      "agents_default": false,
+      "agent_mode": "single",
+      "reranker": "bge-reranker-base-278m",
+      "reranker_placement": { "device": "cpu", "residency": "on_demand", "rationale": "Smallest reranker on CPU on-demand so it never competes for the very tight VRAM budget of sub-8GB hardware." },
+      "memory_embedder_class": "small",
+      "_verify": "Tier not yet validated on hardware; all values provisional."
+    },
+
+    "mid": {
+      "vram_band_gb": [8, 16],
+      "band_label": "~8-16GB",
+      "meaning": "VALIDATED BASELINE (laptop): chat model fully GPU-resident, conservative defaults",
+      "validated_on": "laptop RTX 3070 Ti Laptop, 8GB VRAM / 16GB RAM",
+      "context": { "tokens": 32768, "kv_precision": "q8_0", "fallback_tokens": 16384, "rationale": "32K @ q8_0; verify against GGUF, fall back to 16K if tight." },
+      "agents_default": false,
+      "agent_mode": "single",
+      "reranker": "bge-reranker-base-278m",
+      "reranker_placement": { "device": "cpu", "residency": "on_demand", "rationale": "8GB VRAM is fully consumed by the GPU-resident chat model + KV; the 278M reranker (~0.3GB) stays on CPU and loads only during retrieval, so it never competes for the tight VRAM budget. CPU rerank latency is acceptable under effectiveness-over-speed. User-overridable in Settings." },
+      "memory_embedder_class": "small",
+      "_verify": "KV figures are computed estimates; VERIFY against actual GGUF metadata on the dev box."
+    },
+
+    "high": {
+      "vram_band_gb": [16, 24],
+      "band_label": "~16-24GB",
+      "meaning": "the 30B OFFLOAD tier: ~70/30 CPU offload (desktop validated at 16GB); the offload path the whole design centers on",
+      "validated_on": "desktop RTX 5070 Ti, 16GB VRAM / 64GB RAM",
+      "context": {
+        "tokens": 65536,
+        "kv_precision": "q8_0",
+        "override_tokens": 131072,
+        "per_token_kv_bytes_fp16_estimate": 98304,
+        "rationale": "64K @ q8_0 default at 16GB doubles the working window vs 32K at the same ~3GB KV cost (so the ~70/30 split holds), low-risk 2x YaRN. 128K available as a user override (slow / may degrade under offload). Per-token KV ~96KB @ FP16 (~48 layers, GQA ~4 KV heads, head_dim 128) -- VERIFY vs GGUF."
+      },
+      "offload_split_seed": { "n_gpu_layers": null, "rationale": "SEED the known-good dev layer count here once measured (current ~70/30 split on the 16GB desktop). Used to get an end-to-end skeleton running before the real auto-detector exists. null until filled from the dev box." },
+      "agents_default": false,
+      "agent_mode": "single",
+      "reranker": "bge-reranker-v2-m3-568m",
+      "memory_embedder_class": "small"
+    },
+
+    "ultra": {
+      "vram_band_gb": [24, 32],
+      "band_label": "~24-32GB",
+      "status": "SEED / designed -- 24-32GB residency not validated on hardware yet",
+      "meaning": "the 30B RESIDENT tier: the same 30B-A3B fully GPU-resident (no offload spill), comfortable big context, and the band where concurrent agents activate once built",
+      "validated_on": "none yet -- 24GB+ residency was a seed inside the old open-ended HIGH band; promoted to its own tier 2026-06-23",
+      "context": {
+        "tokens": 131072,
+        "kv_precision": "q8_0",
+        "fallback_tokens": 65536,
+        "per_token_kv_bytes_fp16_estimate": 98304,
+        "rationale": "128K @ q8_0 is comfortable + resident at 24GB+ (4x YaRN caveat -- may degrade; user-overridable). Falls back to 64K if KV is tighter than estimated. VERIFY vs GGUF once 24-32GB hardware is available."
+      },
+      "offload_split_seed": { "n_gpu_layers": null, "rationale": "Full residency expected at 24GB+ (all layers on GPU, no spill); leave null until measured on real 24-32GB hardware. The fit calculator will confirm full offload per machine." },
+      "agents_default": false,
+      "agent_mode": "single",
+      "agent_mode_future": "concurrent",
+      "agent_mode_future_note": "v1 stays 'single' all tiers; this tier (24GB+) is where 'concurrent' (a co-resident agent model alongside the resident 30B) activates once built.",
+      "reranker": "bge-reranker-v2-m3-568m",
+      "memory_embedder_class": "small",
+      "_verify": "Tier not yet validated on hardware; residency + context values provisional."
+    },
+
+    "max": {
+      "vram_band_gb": [32, null],
+      "band_label": "~32GB+",
+      "status": "FUTURE / designed -- no 32GB+ hardware to validate yet; the 'bigger-than-30B' target",
+      "meaning": "workstation / flagship hardware: larger-than-30B models (70B-class dense or a larger MoE), fully resident, longest context, headroom for concurrent agents",
+      "context": { "tokens": 131072, "kv_precision": "q8_0", "fallback_tokens": 65536, "rationale": "Provisional 128K @ q8_0; a 32GB+ card holds a large resident context easily. Settle against the chosen larger model's GGUF when built." },
+      "offload_split_seed": { "n_gpu_layers": null, "rationale": "Full residency expected at 32GB+; leave null until a real model + machine are chosen. The fit calculator confirms per machine." },
+      "agents_default": false,
+      "agent_mode": "single",
+      "agent_mode_future": "concurrent",
+      "agent_mode_future_note": "v1 stays 'single' all tiers; concurrent co-resident agents apply here too once built.",
+      "reranker": "bge-reranker-v2-m3-568m",
+      "memory_embedder_class": "small",
+      "_verify": "Tier not yet validated on hardware; default model unchosen, all values provisional."
+    }
+  },
+
+  "detection_to_tier": "Pick tier by detected VRAM (half-open bands [lo, hi): vram >= lo and vram < hi), then verify RAM clears that tier's hard floor; if not, downgrade a tier or warn. Manual override always available in Settings (user-control)."
+}

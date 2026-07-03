@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="gunmetal">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ayre</title>
+<script>var _t=localStorage.getItem('ayre-theme');if(_t)document.documentElement.setAttribute('data-theme',_t);</script>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ── TOP BAR ─────────────────────────────────────────── -->
+  <div class="topbar">
+    <span class="brand"><span class="dot"></span> Ayre</span>
+    <div class="status-chips" id="statusChips">
+      <span class="schip" id="chip-llama"><span class="led"></span> <b>llama-server</b> · checking…</span>
+      <span class="schip" id="chip-model">model · checking…</span>
+      <span class="schip" id="chip-setup">setup · checking…</span>
+    </div>
+    <div class="theme-switch" role="group" aria-label="Theme">
+      <span class="tlabel">THEME</span>
+      <button data-set="office-dark"   aria-pressed="false">Off·D</button>
+      <button data-set="office-light"  aria-pressed="false">Off·L</button>
+      <button data-set="minimal-dark"  aria-pressed="false">Min·D</button>
+      <button data-set="minimal-light" aria-pressed="false">Min·L</button>
+      <button data-set="gunmetal"      aria-pressed="true">Ayre</button>
+      <button data-set="matrix"        aria-pressed="false">Matrix</button>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <!-- ── NAV RAIL ───────────────────────────────────────── -->
+    <nav class="rail">
+      <button class="nav-btn" data-view="chat" aria-current="true">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Chat
+      </button>
+      <button class="nav-btn" data-view="setup">
+        <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96 12 12.01l8.73-5.05"/><path d="M12 22.08V12"/></svg>
+        Setup
+      </button>
+      <button class="nav-btn" data-view="updater">
+        <svg viewBox="0 0 24 24"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Updater
+      </button>
+      <div class="nav-tools-wrap">
+        <div class="nav-tools-btn-row">
+          <button class="nav-btn" data-view="tools">
+            <svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.7 2.7-2-2 2.7-2.7z"/></svg>
+            Workspace
+          </button>
+          <button class="nav-sub-toggle" id="toolsSubToggle" title="Show project files" aria-label="Toggle project files">▾</button>
+        </div>
+        <div class="nav-submenu" id="toolsSubmenu" hidden></div>
+      </div>
+      <div class="nav-spacer"></div>
+      <button class="nav-btn" data-view="settings">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Settings
+      </button>
+      <div class="rail-foot">v1 · <span id="connectStatus"><b>offline</b></span><br>0 off-device</div>
+    </nav>
+
+    <div class="host">
+
+      <!-- ══ CHAT (LIVE) ═════════════════════════════════════ -->
+      <section class="view active" id="view-chat">
+        <div class="chat">
+          <div class="chat-head">
+            <div class="chat-head-row">
+              <h1>Chat</h1>
+              <button id="memoryToggle" class="memory-toggle" title="Toggle persistent memory">Memory: —</button>
+              <div id="memoryConfirm" class="memory-confirm" hidden>
+                <p class="memory-confirm-title">Enable persistent memory?</p>
+                <p class="memory-confirm-note">Ayre will save a summary after each session. The memory file grows over time and is loaded into every turn, consuming more context tokens.</p>
+                <div class="memory-confirm-btns">
+                  <button id="memoryConfirmYes" class="memory-confirm-yes">Enable</button>
+                  <button id="memoryConfirmNo" class="memory-confirm-no">Cancel</button>
+                </div>
+              </div>
+              <button id="memoryDraftBadge" class="memory-draft-badge" hidden>Review memory ✦</button>
+              <div id="memoryDraftPanel" class="memory-draft-panel" hidden>
+                <p class="memory-confirm-title">Review proposed memory</p>
+                <p class="memory-confirm-note">Ayre proposed the text below for long-term memory. Edit it freely — nothing is saved until you choose <b>Copy to Memory</b>. <b>Discard</b> drops it without saving.</p>
+                <textarea id="memoryDraftText" class="memory-draft-text" spellcheck="false" aria-label="Proposed memory draft"></textarea>
+                <div class="memory-confirm-btns" style="margin-top:10px">
+                  <button id="memoryDraftSave" class="memory-confirm-yes">Copy to Memory</button>
+                  <button id="memoryDraftDiscard" class="memory-confirm-no">Discard</button>
+                </div>
+                <div id="memoryDraftMsg" class="portmsg" style="margin-top:8px"></div>
+              </div>
+              <div class="project-select" id="projectSelect">
+                <button id="projectBtn" class="project-btn">Project: —</button>
+                <div id="projectDropdown" class="project-dropdown" hidden>
+                  <div id="projectDropdownList" class="project-dropdown-list"></div>
+                  <div class="project-dropdown-sep"></div>
+                  <button id="projectDropdownNew" class="project-dropdown-new">+ New project…</button>
+                  <div id="projectNewForm" class="project-new-form" hidden>
+                    <input id="projectNewInput" type="text" placeholder="Project name (no spaces)" maxlength="64" autocomplete="off" spellcheck="false">
+                    <button id="projectNewCreate">Create</button>
+                    <button id="projectNewCancel" class="secondary">Cancel</button>
+                  </div>
+                  <div id="projectNewMsg" class="project-new-msg" hidden></div>
+                </div>
+              </div>
+              <button id="handoffBtn" class="handoff-btn" title="Summarise this session to memory, then start fresh" disabled>Handoff →</button>
+              <span id="handoffNote" class="handoff-note" hidden></span>
+            </div>
+            <p class="chat-status" id="chatStatus">Checking the local model…</p>
+          </div>
+          <div class="chat-main">
+            <!-- Ambient "Ayre is thinking" tendril field: blooms in the top-left only
+                 while the model is generating, then fades out. Toggle in Settings →
+                 Appearance (default on); disabled under prefers-reduced-motion. -->
+            <canvas class="think-viz" id="ctxTendril" width="200" height="200" aria-hidden="true"></canvas>
+            <div class="chat-col">
+            <div class="chat-thread" id="chatThread">
+                <div class="chat-empty" id="chatEmpty">Ask Ayre something to begin. Replies come from your local model — nothing leaves this machine.</div>
+              </div>
+              <div class="ctx-warn" id="ctxWarn" hidden></div>
+              <!-- Pre-send context projection (Slice 3b): exact token cost of the
+                   draft vs the usable window, shown before send. Never blocks. -->
+              <div class="ctx-project" id="ctxProject" hidden></div>
+              <div class="tool-actions" id="toolActions" hidden></div>
+              <div class="chat-composer">
+                <textarea id="chatInput" rows="1" placeholder="Message Ayre…  (Enter to send · Shift+Enter for a new line)" disabled></textarea>
+                <button id="chatSend" disabled>Send</button>
+              </div>
+            </div>
+            <!-- Right rail (shown while the engine is up): the live context meter
+                 (Slice 3a) on top, the hardware monitor below it. -->
+            <aside class="chat-rail" id="chatRail" hidden aria-label="Session telemetry">
+              <!-- Context meter: ACTUAL token occupancy of the loaded window.
+                   Striped bracket at top = space reserved for the handoff. -->
+              <div class="ctx-meter" id="ctxMeter" hidden>
+                <div class="ctx-label">CONTEXT</div>
+                <!-- Two permanent bars on the same window scale:
+                     CHAT = context that carries forward between turns (≈ prompt).
+                     LIVE = what the pending response is using now, thinking included
+                            (≈ prompt + completion); collapses to CHAT at rest. -->
+                <div class="ctx-bars" id="ctxBars">
+                  <div class="ctx-col">
+                    <div class="ctx-bar" id="ctxBar">
+                      <div class="ctx-headroom" id="ctxHeadroom" title="Reserved for Ayre to write the handoff summary"></div>
+                      <div class="ctx-fill" id="ctxFill"></div>
+                    </div>
+                    <div class="ctx-barkey" title="Total chat — context retained across turns (≈ prompt tokens)">CHAT</div>
+                  </div>
+                  <div class="ctx-col">
+                    <div class="ctx-bar" id="ctxBarActive">
+                      <div class="ctx-headroom"></div>
+                      <div class="ctx-fill" id="ctxFillActive"></div>
+                    </div>
+                    <div class="ctx-barkey" title="Active — this pending response, thinking included (≈ prompt + completion). Collapses back to CHAT when the turn ends and the reasoning is freed.">LIVE</div>
+                  </div>
+                </div>
+                <div class="ctx-read">
+                  <span class="ctx-pct" id="ctxPct">0%</span>
+                  <span class="ctx-tok" id="ctxTok">—</span>
+                </div>
+                <!-- Token-accounting trace: raw prompt/completion/total from each
+                     llama-server usage round. R = round · P = prompt · C = completion. -->
+                <div class="ctx-debug" id="ctxDebug" hidden
+                     title="Per generation round — P: prompt tokens (retained context fed in) · C: completion tokens (this round's output, thinking included) · total = P + C (the active peak)."></div>
+              </div>
+              <!-- Hardware monitor: OFFLOAD = how much of the model runs on each
+                   component (the optimizer's launch-time split) + its temperature;
+                   LOAD = how hard each component is working right now (live). -->
+              <div class="hw-mon" id="hwMon" hidden>
+                <div class="ctx-label" title="How many of the model's layers run on each component — set once when the model loads">OFFLOAD</div>
+                <div class="hw-row">
+                  <div class="hw-head"><span class="hw-name">GPU</span><span class="hw-val" id="hwGpuVal">—</span></div>
+                  <div class="hw-track"><div class="hw-fill gpu" id="hwGpuFill"></div></div>
+                  <div class="hw-temp" id="hwGpuTemp">—</div>
+                </div>
+                <div class="hw-row">
+                  <div class="hw-head"><span class="hw-name">CPU</span><span class="hw-val" id="hwCpuVal">—</span></div>
+                  <div class="hw-track"><div class="hw-fill cpu" id="hwCpuFill"></div></div>
+                  <div class="hw-temp" id="hwCpuTemp">—</div>
+                </div>
+                <div class="hw-note" id="hwNote" hidden></div>
+                <!-- Live utilization: how hard each component is working RIGHT NOW
+                     (distinct from the static offload split above). -->
+                <div class="ctx-label hw-group" title="How hard each component is working right now (updates live)">LOAD <span class="hw-live">live</span></div>
+                <div class="hw-row">
+                  <div class="hw-head"><span class="hw-name">GPU</span><span class="hw-val" id="hwGpuLoad">—</span></div>
+                  <div class="hw-track"><div class="hw-fill gpu" id="hwGpuLoadFill"></div></div>
+                </div>
+                <div class="hw-row">
+                  <div class="hw-head"><span class="hw-name">CPU</span><span class="hw-val" id="hwCpuLoad">—</span></div>
+                  <div class="hw-track"><div class="hw-fill cpu" id="hwCpuLoadFill"></div></div>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+        <!-- Tip ticker: scrolls across the bottom of the chat view; hangs briefly
+             when each new tip's start reaches the left edge. Tips list in app.js. -->
+        <div class="tip-ticker" id="tipTicker">
+          <span class="tip-label">TIP</span>
+          <div class="tip-track" id="tipTrack">
+            <span class="tip-text" id="tipText"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ SETUP (LIVE) ══════════════════════════════════════ -->
+      <section class="view" id="view-setup">
+        <div class="pane"><div class="pane-inner">
+          <h1>Setup</h1>
+          <p class="lede">A guided, offline check. This reads the real state on disk — nothing is fetched, no flash-and-close terminals. Setup never downloads anything.</p>
+
+          <div id="setupSummary"></div>
+
+          <div class="launchrow">
+            <select id="modelSelect" aria-label="Model to launch" disabled></select>
+            <button id="startBtn" disabled>Start model</button>
+            <button id="stopBtn" class="secondary" disabled>Stop model</button>
+            <span id="startMsg" class="portmsg"></span>
+          </div>
+          <p class="subnote">Runs <code>python -m ayre_setup.cli start</code> — launches llama-server from config. Choose a model — or <b>Auto</b> to let the optimizer pick the best fit for your hardware; Start enables once you choose (and the engine, config, and a chat model are all present). <b>Stop</b> shuts the running engine down (it's found by its port, so it works however it was started).</p>
+
+          <!-- Optimizer preset + manual override (A3). Labels + rationale come from
+               config (optimizer.json -> solver.presets) via /api/optimizer; the pick
+               persists per-machine (user_settings.json) and applies at the next Start. -->
+          <div class="optbox" id="optBox" hidden>
+            <div class="optrow">
+              <span class="optlabel">Optimizer preset</span>
+              <div class="seg" id="presetSeg" role="radiogroup" aria-label="Optimizer preset"></div>
+              <span id="optMsg" class="portmsg"></span>
+            </div>
+            <p class="subnote" id="presetWhy"></p>
+            <details class="manualbox" id="manualBox">
+              <summary>Manual override — pin context and/or GPU layers <span class="muted">(advanced)</span></summary>
+              <div class="optrow manual">
+                <label>Context tokens
+                  <input id="ovrCtx" type="number" min="1" step="1024" placeholder="preset decides"></label>
+                <label>GPU layers
+                  <input id="ovrNgl" type="number" min="0" step="1" placeholder="auto-fit"></label>
+                <button id="ovrApply">Apply</button>
+                <button id="ovrClear" class="danger">Clear</button>
+              </div>
+              <p class="subnote">Blank = the preset decides that field. Ayre honors your exact values and shows the real cost below — it never silently "fixes" them.</p>
+            </details>
+          </div>
+
+          <!-- Pre-launch hardware-fit banner: filled by /api/fit the moment a model
+               is picked, so an over-budget choice is flagged BEFORE Start. -->
+          <div id="fitNotice" class="fitnotice" hidden></div>
+
+          <div class="sec-head"><h2>Required — engine &amp; config</h2><span class="rule"></span></div>
+          <p class="subnote">The llama-server engine + config. Nothing runs without these.</p>
+          <div class="rows" id="requiredRows"><div class="muted">Loading the doctor report…</div></div>
+
+          <div class="sec-head"><h2>Bundled — RAG rerankers</h2><span class="rule"></span></div>
+          <p class="subnote">Ship in the full download; non-blocking. Absent → chat works, RAG retrieval reranking degrades.</p>
+          <div class="rows" id="ragRows"></div>
+
+          <div class="sec-head"><h2>Chat model</h2><span class="rule"></span></div>
+          <p class="subnote">You add this — any non-reranker .gguf that fits your tier.</p>
+          <div class="rows" id="modelRows"></div>
+
+          <div id="setupHints"></div>
+        </div></div>
+      </section>
+
+      <!-- ══ UPDATER ═════════════════════════════════════════ -->
+      <section class="view" id="view-updater">
+        <div class="pane"><div class="pane-inner">
+          <h1>Updater</h1>
+          <p class="lede">Optional, never required — the stack runs fully offline without it.</p>
+          <div class="placeholder">
+            <span class="tag">deferred component</span>
+            <p><b>The Updater owns all network/download logic and is deferred by design.</b> Express / Custom modes and one-version rollback land when it's built; nothing in the rest of Ayre assumes it has run.</p>
+          </div>
+        </div></div>
+      </section>
+
+      <!-- ══ TOOLS ═══════════════════════════════════════════ -->
+      <section class="view" id="view-tools">
+        <div class="pane"><div class="pane-inner">
+          <h1>Workspace</h1>
+          <p class="lede">Projects, tools, and skills — everything that shapes how Ayre works.</p>
+
+          <div class="sec-head collapsible collapsed" data-target="sec-projects">
+            <h2>Projects</h2><span class="rule"></span><span class="sec-chevron">▾</span>
+          </div>
+          <div class="sec-body" id="sec-projects" hidden>
+            <p class="subnote">Organize files into projects. Only the active project's files are in scope during a chat — switch projects from the Chat header. Each project is a sandboxed folder; <code>read_file</code> and <code>write_file</code> only reach the active one.</p>
+            <div class="project-manager" id="projectManager">
+              <div class="muted">Loading…</div>
+            </div>
+          </div>
+
+          <div class="sec-head collapsible collapsed" data-target="sec-skills">
+            <h2>Skills</h2><span class="rule"></span><span class="sec-chevron">▾</span>
+          </div>
+          <div class="sec-body" id="sec-skills" hidden>
+            <p class="subnote">Reusable workflows Ayre can follow on demand. Built-in skills are always available. Custom skills are saved locally to your Ayre and work across all projects.</p>
+            <p class="skill-warning">A heads-up: custom skills you download from the internet run as instructions inside Ayre. Only use skills from sources you trust.</p>
+            <div class="skill-list" id="skillList">
+              <div class="skill-card skill-builtin">
+                <div class="skill-card-head">
+                  <span class="skill-name">Handoff</span>
+                  <span class="skill-badge">built-in</span>
+                </div>
+                <p class="skill-desc">Writes a session summary and saves it to your active project folder. Use the Handoff button in the top bar at the end of a session to preserve context for next time.</p>
+              </div>
+            </div>
+            <button class="skill-new-btn" id="skillNewBtn" disabled title="Coming in a future update">+ Build a skill</button>
+            <div class="skill-builder" id="skillBuilder" hidden>
+              <p class="skill-builder-tip">Skills work best when built iteratively — start with a rough draft, then have a back-and-forth with Ayre in chat to refine it. Test each part of the workflow before moving on.</p>
+              <div class="skill-field">
+                <label class="skill-label">Title <span class="skill-limit" id="skillTitleCount">0 / 5 words</span></label>
+                <input id="skillTitle" type="text" class="skill-input" placeholder="e.g. Research Brief" maxlength="60" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="skill-field">
+                <label class="skill-label">Description <span class="skill-limit" id="skillDescCount">0 / 30 words</span></label>
+                <textarea id="skillDesc" class="skill-textarea skill-textarea-short" placeholder="One or two sentences describing what this skill does."></textarea>
+              </div>
+              <div class="skill-field">
+                <label class="skill-label">Workflow</label>
+                <textarea id="skillWorkflow" class="skill-textarea" placeholder="Write the full instructions Ayre should follow when this skill is invoked. Be specific — the model will execute this exactly."></textarea>
+              </div>
+              <div class="skill-builder-actions">
+                <button id="skillSaveBtn" class="skill-save-btn">Save skill</button>
+                <button id="skillCancelBtn" class="skill-cancel-btn secondary">Cancel</button>
+                <span id="skillMsg" class="skill-msg"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="sec-head collapsible collapsed" data-target="sec-available-tools">
+            <h2>Tools</h2><span class="rule"></span><span class="sec-chevron">▾</span>
+          </div>
+          <div class="sec-body" id="sec-available-tools" hidden>
+            <p class="subnote">Actions Ayre can take during a conversation. Disable any you don't want available — changes take effect on the next message.</p>
+            <div id="toolList" class="tool-list">
+              <div class="muted">Loading…</div>
+            </div>
+          </div>
+
+          <div class="sec-head collapsible collapsed" data-target="sec-kiwix">
+            <h2>Kiwix ZIM library</h2><span class="rule"></span><span class="sec-chevron">▾</span>
+          </div>
+          <div class="sec-body" id="sec-kiwix" hidden>
+            <div class="placeholder">
+              <span class="tag">deferred — Slice 4</span>
+              <p>BM25 offline search over your local ZIM archives. Matched content is retrieved and injected as context before each turn — no embeddings, no internet.</p>
+            </div>
+          </div>
+        </div></div>
+      </section>
+
+      <!-- ══ SETTINGS ════════════════════════════════════════ -->
+      <section class="view" id="view-settings">
+        <div class="pane"><div class="pane-inner">
+          <h1>Settings</h1>
+          <p class="lede">Defaults, hardware tuning, and appearance.</p>
+
+          <div class="sec-head"><h2>Connection</h2><span class="rule"></span></div>
+          <p class="subnote">The local port Ayre's interface serves on. Pick any 4-digit port (1000–9999) if 2500 is taken. Loopback only — never exposed off this machine. Takes effect after you restart Ayre.</p>
+          <div class="portrow">
+            <input id="uiPort" type="text" inputmode="numeric" maxlength="4" autocomplete="off" spellcheck="false" aria-label="UI port">
+            <button id="savePort">Save port</button>
+            <span id="portMsg" class="portmsg"></span>
+          </div>
+
+          <div class="sec-head"><h2>Session</h2><span class="rule"></span></div>
+          <p class="subnote">When you press <b>Handoff →</b>, Ayre asks the model to write a session summary and save it to your project folder. Some reasoning models call the save tool repeatedly in a loop. The cooldown blocks duplicate saves within this window — the model still gets a success response so it stops trying. Set higher if your model keeps producing extra files; set lower if you do back-to-back handoffs in the same session.</p>
+          <div class="portrow">
+            <label for="handoffCooldown" style="font-size:13.5px;white-space:nowrap">Handoff cooldown</label>
+            <input id="handoffCooldown" type="text" inputmode="numeric" maxlength="4" autocomplete="off" spellcheck="false" aria-label="Handoff cooldown in minutes" style="width:56px">
+            <span style="font-size:13.5px;white-space:nowrap">min</span>
+            <button id="saveHandoffCooldown">Save</button>
+            <span id="handoffCooldownMsg" class="portmsg"></span>
+          </div>
+
+          <div class="sec-head"><h2>Memory</h2><span class="rule"></span></div>
+          <p class="subnote">Ayre's persistent memory holds facts it has saved about you and your work — your preferences, role, and ongoing project context. Memory is <b>user-level</b>: shared across all projects and loaded into every session automatically. <b>Clearing</b> permanently deletes those saved notes — it can't be undone. It does <b>not</b> turn memory off, so Ayre can save fresh notes again afterwards. Turn memory on or off from the <b>Workspace</b> tab.</p>
+          <div class="portrow">
+            <span id="memorySaved" style="font-size:13.5px;white-space:nowrap">Saved notes: —</span>
+            <button id="clearMemoryBtn" class="danger">Clear saved memory</button>
+            <span id="clearMemoryMsg" class="portmsg"></span>
+          </div>
+          <div class="portrow" style="margin-top:10px">
+            <label for="memoryWarningChars" style="font-size:13.5px;white-space:nowrap">Warn when memory exceeds</label>
+            <input id="memoryWarningChars" type="text" inputmode="numeric" maxlength="6" autocomplete="off" spellcheck="false" aria-label="Memory warning threshold in characters" style="width:70px">
+            <span style="font-size:13.5px;white-space:nowrap">chars</span>
+            <button id="saveMemoryWarning">Save</button>
+            <span id="memoryWarningMsg" class="portmsg"></span>
+          </div>
+          <p class="subnote" style="margin-top:6px">When saved memory grows past this size, Ayre will suggest pruning the file at <code>ayre_workspace/memory.md</code>. Raise this if the warning fires too early; lower it to keep memory compact.</p>
+          <p class="subnote" style="margin-top:10px">Ayre can only <b>propose</b> memory — nothing is saved until you review and approve it. When it proposes something, the memory chip shows a <b>Review</b> badge and a notice appears inline in the chat so you can review, edit, and approve it.</p>
+          <div id="clearMemoryConfirm" class="clear-confirm" hidden>
+            <p class="memory-confirm-title">Delete saved memory?</p>
+            <p class="memory-confirm-note">This permanently removes everything Ayre has saved to memory. It can't be undone.</p>
+            <div class="memory-confirm-btns">
+              <button id="clearMemoryYes" class="memory-confirm-yes danger">Clear it</button>
+              <button id="clearMemoryNo" class="memory-confirm-no">Cancel</button>
+            </div>
+          </div>
+
+          <div class="sec-head"><h2>Appearance</h2><span class="rule"></span></div>
+          <p style="color:var(--ink-dim);font-size:13.5px;margin:0 0 14px">Six runtime-swappable themes — every color, font and effect is a CSS variable. Use the switcher in the top bar; the signature gunmetal/orange/cyan palette ships as <b>Ayre</b> and is the default.</p>
+          <p class="subnote">The <b>Ayre thinking visual</b> — a tendril field that blooms in the top-left of the chat while the model is generating (more tendrils as it thinks, reaching further as the chat grows), then fades out. Purely ambient; it animates only during a reply. The context meter's two bars are always shown either way. Falls back to off if your system prefers reduced motion.</p>
+          <div class="viz-switch" role="group" aria-label="Thinking visual">
+            <span class="tlabel">THINKING VISUAL</span>
+            <button data-viz="on" aria-pressed="true">On</button>
+            <button data-viz="off" aria-pressed="false">Off</button>
+          </div>
+          <div class="placeholder">
+            <span class="tag">backend not built yet</span>
+            <p><b>Persona, toggle defaults, and hardware tuning</b> (GPU-layer override, context size) bind to config once the Framework + the layer-split detector are built. The theme switcher above is live now.</p>
+          </div>
+        </div></div>
+      </section>
+
+    </div><!-- /host -->
+  </div><!-- /body -->
+</div>
+
+<!-- CHAT-context send modal (#3): shown when projected usage would fill ~95% of the usable window -->
+<div id="ctxLimitModal" class="url-modal" hidden>
+  <div class="url-modal-inner ctx-limit-inner">
+    <p class="url-modal-title ctx-limit-title">⚠ Context limit — chat may break</p>
+    <p class="ctx-limit-body">Sending this message will push the conversation past its usable limit. The model will likely start dropping earlier turns, producing incoherent or incomplete replies. <b>This can make the entire chat unusable.</b></p>
+    <p class="ctx-limit-body">Ayre will save a full copy of this conversation to your project folder before sending, so you can recover the text if needed.</p>
+    <p class="ctx-limit-file" id="ctxLimitFile"></p>
+    <div class="url-modal-btns">
+      <button id="ctxLimitSend">Save log &amp; send anyway</button>
+      <button id="ctxLimitCancel" class="secondary">Cancel — don't send</button>
+    </div>
+  </div>
+</div>
+
+<!-- LIVE-context send modal (#1): shown when one message would nearly fill the model's full window -->
+<div id="ctxLiveModal" class="url-modal" hidden>
+  <div class="url-modal-inner ctx-limit-inner">
+    <p class="url-modal-title ctx-limit-title">⚠ LIVE Context limit — chat may break</p>
+    <p class="ctx-limit-body">This message exceeds the live context capacity of your current model, producing incoherent or incomplete replies. Consider revising this message into smaller chunks.</p>
+    <p class="ctx-limit-body">Ayre will save a full copy of this conversation to your project folder before sending, so you can recover the text if needed.</p>
+    <p class="ctx-limit-body ctx-live-confirm" id="ctxLiveConfirmNote" hidden><b>Sending anyway will most likely cause the chat to fail.</b> Press the button again to confirm.</p>
+    <div class="url-modal-btns">
+      <button id="ctxLiveSend">Save log &amp; send anyway</button>
+      <button id="ctxLiveCancel" class="secondary">Cancel — don't send</button>
+    </div>
+  </div>
+</div>
+
+<!-- External URL warning modal: shown when the user clicks a link in the chat -->
+<div id="urlWarningModal" class="url-modal" hidden>
+  <div class="url-modal-inner">
+    <p class="url-modal-title">Leaving Ayre</p>
+    <p class="url-modal-note">You are about to open a link on the world wide web. Ayre runs offline — this will leave your machine.</p>
+    <p class="url-modal-url" id="urlWarningTarget"></p>
+    <div class="url-modal-btns">
+      <button id="urlWarningOpen">Open link</button>
+      <button id="urlWarningCancel" class="secondary">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

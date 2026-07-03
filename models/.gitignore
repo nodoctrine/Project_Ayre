@@ -1,0 +1,4 @@
+# Model weights live on the USB, not in git.
+*.gguf
+*.bin
+*.safetensors

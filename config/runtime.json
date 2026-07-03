@@ -1,0 +1,53 @@
+{
+  "_comment": "Runtime launch settings for the llama-server wrapper. Variable-first: host/port/paths/flags live here, never as code literals. Paths are relative to the Ayre-USB root unless absolute.",
+
+  "host": "127.0.0.1",
+  "port": 8080,
+  "bin_dir": "bin",
+
+  "ui": {
+    "port": 2500,
+    "rationale": "The Ayre-UI shell serves on its own loopback port (open http://localhost:2500), distinct from llama-server's 8080 so the two never collide. Change this value to move the UI port. The bind HOST is intentionally NOT configurable here: it is hard-locked to loopback (127.0.0.1) in code (server.py -> _LOOPBACK_BIND_HOST) so the bridge can never be network-exposed without the gated Remote Access work. See Remote Access in the project design notes."
+  },
+
+  "fallback_n_gpu_layers": 0,
+  "fallback_n_gpu_layers_rationale": "Used only when the active tier has no seeded offload_split. 0 = all-CPU: slow but proves the model loads (matches the 'model can run CPU-only in the VM just to confirm it loads' verification note). Measure the real dev split and seed tiers.json -> mid.offload_split_seed.n_gpu_layers.",
+
+  "health_check": {
+    "timeout_seconds": 120,
+    "poll_interval_seconds": 1.0,
+    "rationale": "A cold 17GB model load with CPU offload can take tens of seconds; 120s gives margin. /health returns 200 once the model is loaded and the server is ready."
+  },
+
+  "context_meter": {
+    "_comment": "Chat context-meter knobs (Slice 3 / the project design notes). The meter reads the ACTUAL loaded window (n_ctx via llama-server /props) and ACTUAL occupancy (token usage from each turn); these values only shape the zones and the reserved bracket, not the measurement.",
+
+    "headroom_fraction": 0.05,
+    "headroom_fraction_rationale": "Reserve the top 5% of the loaded context window for the handoff summary, so a summary always fits even once the chat has filled the usable space (Context_Management.md, RESOLVED 2026-06-14 option C: the reserve is a HARD reserve; crossing it triggers the handoff, not a freeze). ~3,200 tokens at 64K / ~1,600 at 32K -- ample for a 500-1500-token summary whose conversation is already in context. Tunable; headroom is allowed to vary by tier later.",
+
+    "zones": { "yellow_at": 0.70, "red_at": 0.85 },
+    "zones_rationale": "Zone boundaries as a fraction of USABLE context (total minus headroom). 0-0.70 green (normal, no warning); 0.70-0.85 yellow (visual shift only, no interruption); 0.85-1.0 red (soft warn, escalating, never hard-block). From Context_Management.md. NOTE: these colour the meter BARS; the pre-send SEND warnings use the separate 'warnings' thresholds below.",
+
+    "warnings": { "chat_high_at": 0.80, "chat_full_at": 0.95, "live_at": 0.95 },
+    "warnings_rationale": "Pre-send composer warnings, all read off the projected occupancy (carried context + the draft message). chat_high_at / chat_full_at are fractions of the USABLE window; live_at is a fraction of the FULL window (n_ctx). Escalation, highest-severity first: live_at (>=95% of the full window -> blocking modal with a two-press confirm, advise splitting the message; supersedes chat_full so it ALSO saves a chat log) > chat_full_at (>=95% of usable -> blocking modal that saves a chat log before sending, handoff due) > chat_high_at (>=80% of usable -> inline advisory + soft double-press confirm). See Context_Management.md."
+  },
+
+  "memory": {
+    "max_chars": 100000,
+    "rationale": "Hard ceiling (characters) on saved memory AND on the staged draft. Confirmed memory is injected into every request, so unbounded growth means context bloat and slow sessions; the draft is capped too so a runaway model cannot fill the disk by looping save_memory. The model can only PROPOSE to a draft (it never writes confirmed memory directly), but this bounds both. This is the HARD safety backstop; the soft 'memory is getting long' nudge is separate and user-tunable (Settings -> memory_warning_chars, default 1500). ~100k chars is ~25k tokens: generous for legitimate notes while stopping MB-scale runaways. Lower it on small-context hardware."
+  },
+
+  "tools": {
+    "write_file": {
+      "confirm": true,
+      "confirm_rationale": "Write-File confirmation gate (default ON; user-control-is-core + protect-end-user-hardware). When true, write_file STAGES its content and the user must Allow it in the UI before the file is created -- no silent disk writes, and the human stays in the loop on every file the model creates or overwrites. This is the shipped default; a per-machine override lives in user_settings -> tools.write_file.confirm (toggled from the Tools panel). Set false to restore immediate writes (power-user / trusted-automation only)."
+    }
+  },
+
+  "extra_server_args": [],
+
+  "workspace": {
+    "path": "ayre_workspace",
+    "rationale": "Sandboxed folder for model-accessible files (read_file tool) and the persistent memory file (memory.md). Relative to the Ayre-USB root. The model cannot access files outside this folder."
+  }
+}
