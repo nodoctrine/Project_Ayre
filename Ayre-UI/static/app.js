@@ -191,6 +191,7 @@
     var up = sys.llama && sys.llama.healthy;
     lastLlamaUp = !!up;
     if (chatCtl) chatCtl.setAvailable(lastLlamaUp);
+    if (faviconCtl) faviconCtl.engine(lastLlamaUp);
     if (startCtl) startCtl.syncHealth();
     // Context meter: shape it from config + the live window; it hides when the
     // engine is down (no window) and resets occupancy on the next launch.
@@ -853,6 +854,67 @@
      are measured against the USABLE window (total minus the reserved handoff
      headroom); the striped bracket at the top of the bar is that reserved space.
      The handoff flow the red zone primes lands in a later sub-slice (3c). */
+  /* ── Browser tab favicon (live status) ──
+     Solid --signal (theme's cyan) while the engine is up and idle, --amber while
+     down. While a turn is generating, a ring breathes outward from the core and
+     fades — the same outward-pulse shape as the topbar .dot chip's box-shadow
+     animation and the tendril visual's breathing core, just drawn to canvas
+     since a favicon can't run a CSS animation. A 150ms interval (not rAF) steps
+     the breath: ~16 redraws per 2.4s cycle (matching the .dot's cadence) is
+     plenty smooth for a tab-strip icon without redrawing 60x/sec. */
+  var faviconCtl = (function wireFavicon() {
+    var link = document.getElementById('favicon');
+    if (!link) return null;
+    var cv = document.createElement('canvas'); cv.width = cv.height = 32;
+    var ctx = cv.getContext('2d');
+    var engineUp = false, thinking = false, timer = null, t0 = 0;
+    var PERIOD_MS = 2400, STEP_MS = 150;   // cadence matched to the .dot chip's pulse
+
+    function colorVar(name, fallback) {
+      try {
+        var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        return v || fallback;
+      } catch (e) { return fallback; }
+    }
+
+    // phase: null for a plain solid dot (idle/down); 0..1 for one breath cycle
+    // of the outward ring (0 = ring at the core's edge, full-ish opacity;
+    // 1 = ring expanded and faded to nothing).
+    function draw(phase) {
+      ctx.clearRect(0, 0, 32, 32);
+      var color = engineUp ? colorVar('--signal', '#3ddbe6') : colorVar('--amber', '#e0a13a');
+      if (phase != null) {
+        ctx.globalAlpha = 0.45 * (1 - phase);
+        ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(16, 16, 10 + phase * 8, 0, 6.2832); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(16, 16, 9, 0, 6.2832); ctx.fill();
+      link.href = cv.toDataURL('image/png');
+    }
+
+    function sync() {
+      if (thinking) {
+        if (!timer) {
+          t0 = Date.now();
+          timer = setInterval(function () {
+            draw(((Date.now() - t0) % PERIOD_MS) / PERIOD_MS);
+          }, STEP_MS);
+        }
+      } else {
+        if (timer) { clearInterval(timer); timer = null; }
+        draw(null);
+      }
+    }
+
+    draw(null);
+    return {
+      engine: function (up) { engineUp = !!up; sync(); },
+      thinking: function (active) { thinking = !!active; sync(); }
+    };
+  })();
+
   /* ── Thinking visual (ambient top-left tendril overlay) ──
      A reuse of the Ayre splash: tendrils radiating from a breathing core node, drawn
      over the top-left of the chat. Driven live by the meter — COUNT grows with active
@@ -1147,6 +1209,7 @@
         liveBase = retained + estTokens(userText);
         active = liveBase; render();
         if (ctxTendrils) ctxTendrils.start();
+        if (faviconCtl) faviconCtl.thinking(true);
       },
       // One streamed token (reasoning or answer) — climb LIVE's estimate, throttled.
       // max() so a prior exact usage chunk is never undercut by the estimate.
@@ -1177,9 +1240,14 @@
         }
         render();
         if (ctxTendrils) ctxTendrils.stop();
+        if (faviconCtl) faviconCtl.thinking(false);
       },
       // Turn errored: drop it; CHAT unchanged, LIVE empties to 0 (nothing in flight).
-      abortTurn: function () { streaming = false; active = 0; render(); if (ctxTendrils) ctxTendrils.stop(); },
+      abortTurn: function () {
+        streaming = false; active = 0; render();
+        if (ctxTendrils) ctxTendrils.stop();
+        if (faviconCtl) faviconCtl.thinking(false);
+      },
       // Estimated word budget for the handoff note based on the reserved headroom.
       wordBudget: function () {
         if (!nCtx) return 600;
@@ -2345,6 +2413,7 @@
   function refresh() {
     getJSON('/api/system').then(renderSystem).catch(function () {
       document.getElementById('chip-llama').innerHTML = '<span class="led down"></span> <b>llama-server</b> · bridge offline';
+      if (faviconCtl) faviconCtl.engine(false);
     });
     // Offer to inject the most recent handoff file for the active project (if one exists).
     getJSON('/api/handoff/latest').then(function (d) {
