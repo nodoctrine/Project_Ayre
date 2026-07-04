@@ -111,21 +111,25 @@ no venv), so the official **Windows embeddable package** runs it as-is.
 1. From python.org's downloads, grab **"Windows embeddable package (64-bit)"** for a
    recent 3.x (e.g. 3.12 or 3.13). It's a ~10 MB zip.
 2. Unzip it into `python/` so you end up with `python/python.exe`.
-3. In that folder, open `python3XX._pth` (e.g. `python312._pth`) and add **two**
-   path lines so both the launcher and the standalone doctor resolve their packages
-   under the embeddable runtime (which sets `sys.path` from this file and does *not*
-   add the working dir the way a normal Python does):
+3. In that folder, open `python3XX._pth` (e.g. `python312._pth`) and add **three**
+   path lines so the launcher, the standalone doctor, and the RAG index-builder
+   resolve their packages under the embeddable runtime (which sets `sys.path` from
+   this file and does *not* add the working dir the way a normal Python does):
    ```
    ..\Ayre-UI
    ..\Ayre-Setup
+   ..\Ayre-RAG
    ```
    (Leave the rest of the file as-is.) `..\Ayre-UI` makes `python -m ayre_ui` — the
    launch the kit actually uses — resolve the UI package. `..\Ayre-Setup` lets you
    run the doctor CLI directly under the bundled Python
-   (`python\python.exe -m ayre_setup.cli check`, step 7); the end-user path doesn't
-   need it (the UI imports the doctor in-process and `server.py` adds `Ayre-Setup` to
-   `sys.path` at runtime), but listing it keeps "any Python 3 works" honest for the
-   bundled one too.
+   (`python\python.exe -m ayre_setup.cli check`, step 7). `..\Ayre-RAG` lets the user
+   build the local Wikipedia index directly under the bundled Python
+   (`python\python.exe -m ayre_rag ingest --dump <dump.xml.bz2>`). The end-user chat
+   path doesn't strictly need the last two (the UI imports the doctor + RAG retrieve
+   in-process and `server.py` adds both folders to `sys.path` at runtime), but listing
+   them keeps "any Python 3 works" honest for the bundled one and makes the index-build
+   command work out of the box.
 
 No `pip install` step exists or is needed — every import in the kit is stdlib or
 internal. The launcher (`Start Ayre.cmd`) prefers this bundled `python\python.exe`

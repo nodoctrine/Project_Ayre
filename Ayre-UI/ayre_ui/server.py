@@ -37,6 +37,14 @@ showing mock data:
   GET  /api/skills   -> list global custom skills (id, title, description).
   POST /api/skills   -> {"title", "description", "workflow", id?} create or update a skill.
   DELETE /api/skills/<id> -> delete a custom skill by id.
+  GET  /api/rag      -> RAG library state: index status (built? counts?) + toggles.
+  POST /api/rag/toggle -> {"key": "enabled"|"show_retrieved_context", "enabled": bool}
+                        persist a RAG toggle per-machine.
+
+RAG grounding (component 4, v0) rides on /api/chat: when enabled, each user turn
+auto-retrieves BM25 hits from the local Wikipedia FTS5 index and splices an ephemeral
+user-role reference block before the message; a `rag_sources` SSE event carries the
+deduped source titles (+ chunk previews when the user enabled that) to the browser.
 
 Stdlib only (http.server + urllib + socket), loopback only, no pip, no CDN. The
 UI<->Python seam is HTTP+JSON, the same shape llama-server already speaks; a
@@ -63,20 +71,34 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 # --- Cross-component seam -------------------------------------------------
-# Ayre-UI consumes Ayre-Setup's doctor/config. Both live under the Ayre-USB
-# root as sibling folders; make the `ayre_setup` package importable without an
-# install step (v1 runs from the folder, offline). This is the ONE place the UI
-# reaches into Setup.
+# Ayre-UI consumes Ayre-Setup's doctor/config and Ayre-RAG's retrieve/inject. All
+# live under the Ayre-USB root as sibling folders; make those packages importable
+# without an install step (v1 runs from the folder, offline). This is the ONE place
+# the UI reaches into Setup + RAG (mirrors the bundled python's ._pth path entries).
 _AYRE_UI_DIR = Path(__file__).resolve().parents[1]      # .../Ayre-USB/Ayre-UI
 _AYRE_USB_ROOT = _AYRE_UI_DIR.parent                    # .../Ayre-USB
 _AYRE_SETUP_DIR = _AYRE_USB_ROOT / "Ayre-Setup"         # holds the ayre_setup pkg
-if str(_AYRE_SETUP_DIR) not in sys.path:
-    sys.path.insert(0, str(_AYRE_SETUP_DIR))
+_AYRE_RAG_DIR = _AYRE_USB_ROOT / "Ayre-RAG"             # holds the ayre_rag pkg
+for _seam_dir in (_AYRE_SETUP_DIR, _AYRE_RAG_DIR):
+    if str(_seam_dir) not in sys.path:
+        sys.path.insert(0, str(_seam_dir))
 
 from ayre_setup import platform_layer  # noqa: E402
 from ayre_setup.config import load_runtime, load_rerankers, reranker_items, models_dir  # noqa: E402
 from ayre_setup.preflight import run_doctor  # noqa: E402
 from ayre_setup.server import stop_running_server  # noqa: E402
+
+# RAG (component 4, v0). Import is defensive: RAG is additive + default-off, so a
+# missing/broken Ayre-RAG package must degrade to "RAG unavailable", never break the
+# UI. All later uses guard on `_RAG_AVAILABLE`.
+try:
+    from ayre_rag import inject as rag_inject  # noqa: E402
+    from ayre_rag import retrieve as rag_retrieve  # noqa: E402
+    from ayre_rag.config import RagConfig, load_config_safe as _load_rag_config  # noqa: E402
+    import dataclasses as _dataclasses  # noqa: E402
+    _RAG_AVAILABLE = True
+except Exception:  # noqa: BLE001 -- any import failure just disables RAG
+    _RAG_AVAILABLE = False
 
 STATIC_DIR = _AYRE_UI_DIR / "static"
 
@@ -181,6 +203,95 @@ def _set_memory_enabled(enabled: bool) -> None:
     data = _load_user_settings()
     data.setdefault("memory", {})["enabled"] = bool(enabled)
     _save_user_settings(data)
+
+
+# --- RAG (component 4, v0) -------------------------------------------------
+# config/rag.json holds the committed defaults + all tuning knobs (variable-first);
+# the two user-facing TOGGLES (enabled, show_retrieved_context) overlay per-machine
+# from user_settings.json, same split as memory.enabled. So a user's Settings choice
+# survives a git pull without editing the committed config.
+
+def _rag_config() -> "RagConfig | None":
+    """The active RagConfig: rag.json defaults with the per-machine toggle overrides
+    applied. None when the RAG package is unavailable (import failed)."""
+    if not _RAG_AVAILABLE:
+        return None
+    cfg = _load_rag_config()  # forgiving: a broken rag.json -> all-default, RAG off
+    overlay = _load_user_settings().get("rag", {}) or {}
+    changes: dict = {}
+    if "enabled" in overlay:
+        changes["enabled"] = bool(overlay["enabled"])
+    if "show_retrieved_context" in overlay:
+        changes["show_retrieved_context"] = bool(overlay["show_retrieved_context"])
+    return _dataclasses.replace(cfg, **changes) if changes else cfg
+
+
+def _set_rag_toggle(key: str, enabled: bool) -> None:
+    """Persist a RAG toggle (`enabled` | `show_retrieved_context`) per-machine."""
+    data = _load_user_settings()
+    data.setdefault("rag", {})[key] = bool(enabled)
+    _save_user_settings(data)
+
+
+def _rag_state() -> dict:
+    """RAG library section state: live index status + the effective toggle values.
+    Never raises -- index_status is a non-blocking probe (three-tier-doctor posture)."""
+    if not _RAG_AVAILABLE:
+        return {"available": False, "enabled": False, "ready": False,
+                "error": "RAG package not installed."}
+    cfg = _rag_config()
+    status = rag_retrieve.index_status(cfg)
+    status["available"] = True
+    status["show_retrieved_context"] = cfg.show_retrieved_context
+    return status
+
+
+def _rag_token_counter(base: str):
+    """A str->int token counter for context_fraction enforcement, backed by
+    llama-server's EXACT /tokenize (the same tokenizer the model uses) so the ceiling
+    is real, not estimated. Falls back to a conservative chars-per-token estimate on
+    any hiccup so grounding never fails just because a count was unavailable."""
+    def count(text: str) -> int:
+        res = tokenize_text(text)  # POST /tokenize; {"ok":True,"count":N} or {"ok":False}
+        if res.get("ok") and isinstance(res.get("count"), int):
+            return res["count"]
+        return max(1, len(text) // 4)
+    return count
+
+
+def _maybe_inject_rag(messages: list, query_text: str, base: str) -> "object | None":
+    """If RAG is enabled + a query exists, retrieve grounding and splice a user-role
+    reference block into `messages` immediately before the last user message. Returns
+    the Injection (for the sources event) or None when nothing was injected.
+
+    Injection is EPHEMERAL: `messages` is a per-request list (rebuilt from the
+    browser's payload every turn), so the block reaches the model this turn only and
+    is never persisted into stored history. NEVER raises into the chat path -- any
+    failure just skips grounding (retrieval already swallows the common cases)."""
+    if not _RAG_AVAILABLE or not query_text:
+        return None
+    try:
+        cfg = _rag_config()
+        if cfg is None or not cfg.enabled:
+            return None
+        hits = rag_retrieve.retrieve(query_text, cfg)
+        if not hits:
+            return None
+        n_ctx = _llama_props(base).get("n_ctx")
+        injection = rag_inject.build_injection(
+            hits, cfg, n_ctx=n_ctx, count_tokens=_rag_token_counter(base))
+        if not injection.text:
+            return None
+        # Splice before the LAST user message (the real current turn).
+        insert_at = len(messages)
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "user":
+                insert_at = i
+                break
+        messages.insert(insert_at, {"role": "user", "content": injection.text})
+        return injection
+    except Exception:  # noqa: BLE001 -- grounding is best-effort; never break a turn
+        return None
 
 
 def _handoff_cooldown() -> int:
@@ -1804,6 +1915,9 @@ class AyreUIHandler(BaseHTTPRequestHandler):
         if route == "/api/memory":
             self._send_json(_memory_state())
             return
+        if route == "/api/rag":
+            self._send_json({"ok": True, **_rag_state()})
+            return
         if route == "/api/memory/draft":
             content = _memory_draft_content()
             self._send_json({"ok": True, "content": content or "",
@@ -1999,6 +2113,13 @@ class AyreUIHandler(BaseHTTPRequestHandler):
         rt = load_runtime()
         base = f"http://{rt.get('host', '127.0.0.1')}:{rt.get('port', 8080)}"
 
+        # RAG (component 4): when enabled, retrieve grounding for the current user
+        # message and splice an EPHEMERAL user-role reference block in before it. Runs
+        # BEFORE the SSE response opens so a failure can't corrupt a half-sent stream;
+        # returns None (no-op) when RAG is off, the index is absent, or nothing clears
+        # the bar. The sources event is emitted once the stream is open (below).
+        rag_injection = _maybe_inject_rag(messages, last_user_content, base)
+
         # Open the SSE response to the browser now, before the loop.
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -2009,6 +2130,19 @@ class AyreUIHandler(BaseHTTPRequestHandler):
 
         if memory_injected:
             _write_sse(self.wfile, {"ayre_event": "memory_loaded"})
+        if rag_injection is not None:
+            # Sources list is ALWAYS shown when grounded (titles only, deduped). The
+            # retrieved-context preview (raw chunks) rides along only when the user
+            # enabled it -- the browser shows the panel only if `previews` is present.
+            cfg_show = _rag_config()
+            event = {"ayre_event": "rag_sources", "sources": rag_injection.sources}
+            if cfg_show is not None and cfg_show.show_retrieved_context:
+                event["previews"] = [
+                    {"title": p.title, "chunk_ix": p.chunk_ix, "body": p.body,
+                     "further_reading": p.further_reading}
+                    for p in rag_injection.previews
+                ]
+            _write_sse(self.wfile, event)
         if invoked_skill_title:
             # Invocation transparency: the user must be able to SEE that their
             # message triggered a skill (and which one) — both to confirm a skill
@@ -2193,6 +2327,29 @@ class AyreUIHandler(BaseHTTPRequestHandler):
             return
         if route == "/api/memory/clear":
             self._send_json(_clear_memory())
+            return
+        if route == "/api/rag/toggle":
+            # Toggle either RAG on/off (`enabled`) or the retrieved-context preview
+            # (`show_retrieved_context`), persisted per-machine in user_settings.
+            if not _RAG_AVAILABLE:
+                self._send_json({"ok": False, "error": "RAG is unavailable."})
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0) or 0)
+                payload = json.loads(self.rfile.read(length) or b"{}") if length else {}
+                key = payload.get("key", "enabled")
+                enabled = payload.get("enabled")
+            except (ValueError, json.JSONDecodeError):
+                self._send_json({"ok": False, "error": "Bad request."}, HTTPStatus.BAD_REQUEST)
+                return
+            if key not in ("enabled", "show_retrieved_context"):
+                self._send_json({"ok": False, "error": f"Unknown toggle: {key!r}"})
+                return
+            if not isinstance(enabled, bool):
+                self._send_json({"ok": False, "error": "enabled must be a boolean"})
+                return
+            _set_rag_toggle(key, enabled)
+            self._send_json({"ok": True, **_rag_state()})
             return
         if route == "/api/memory/draft/promote":
             try:

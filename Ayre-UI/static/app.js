@@ -185,6 +185,51 @@
   // place model text becomes HTML in the chat — always via md.render (escape-first).
   function renderAnswer(elm, text) { elm.innerHTML = md.render(text); }
 
+  // A div/span/etc. whose text is set via textContent — the ONLY safe path for
+  // untrusted corpus text (article titles + chunk bodies can contain < > &). el()'s
+  // third arg is innerHTML, so it must never carry corpus text.
+  function textEl(tag, cls, text) {
+    var d = document.createElement(tag);
+    if (cls) d.className = cls;
+    if (text != null) d.textContent = text;
+    return d;
+  }
+
+  // Render the RAG "Sources consulted" list under a grounded reply. `sources` is a
+  // deduped list of article titles (display-only, code-assembled — never trusts the
+  // model to cite correctly). `previews` (present only when the user enabled "Show
+  // retrieved context") is the raw injected chunks, shown in a collapsible panel.
+  // Corpus text is UNTRUSTED and always set via textContent (textEl), never innerHTML.
+  function renderRagSources(container, sources, previews) {
+    if (!container) return;
+    container.innerHTML = '';
+    if (!sources || !sources.length) { container.hidden = true; return; }
+    container.hidden = false;
+    container.appendChild(textEl('div', 'rag-sources-head', 'Sources consulted'));
+    var list = textEl('ul', 'rag-sources-list');
+    sources.forEach(function (title) {
+      list.appendChild(textEl('li', 'rag-source-item', title));
+    });
+    container.appendChild(list);
+
+    if (previews && previews.length) {
+      var det = document.createElement('details');
+      det.className = 'rag-context';
+      var sum = document.createElement('summary');
+      sum.textContent = 'Retrieved context (' + previews.length + ')';
+      det.appendChild(sum);
+      previews.forEach(function (p) {
+        var block = textEl('div', 'rag-context-chunk');
+        var label = (p.title || '') + (typeof p.chunk_ix === 'number' ? ' · passage ' + p.chunk_ix : '');
+        block.appendChild(textEl('div', 'rag-context-title', label));
+        block.appendChild(textEl('div', 'rag-context-body', p.body || ''));
+        if (p.further_reading) block.appendChild(textEl('div', 'rag-context-fr', p.further_reading));
+        det.appendChild(block);
+      });
+      container.appendChild(det);
+    }
+  }
+
   /* ── topbar status chips (live) ── */
   function renderSystem(sys) {
     var llama = document.getElementById('chip-llama');
@@ -1652,12 +1697,17 @@
       var tbody = el('div', 'think-body');
       det.appendChild(sum); det.appendChild(tbody);
       var ans = el('div', 'answer');
+      // RAG "Sources consulted" list (component 4): populated from the rag_sources
+      // SSE event when a turn is grounded; stays hidden otherwise. Sits under the
+      // answer so it reads as attribution for what was just said.
+      var sources = el('div', 'rag-sources'); sources.hidden = true;
       // Footer status line: turn liveness ("Working…") + live/settled tok/s (Phase 1).
       var stat = el('div', 'msg-stat'); stat.hidden = true;
-      wrap.appendChild(tools); wrap.appendChild(det); wrap.appendChild(ans); wrap.appendChild(stat);
+      wrap.appendChild(tools); wrap.appendChild(det); wrap.appendChild(ans);
+      wrap.appendChild(sources); wrap.appendChild(stat);
       thread.appendChild(wrap);
       scrollToBottom();  // new assistant bubble: always anchor to bottom
-      return { wrap: wrap, tools: tools, det: det, sum: sum, tbody: tbody, ans: ans, stat: stat };
+      return { wrap: wrap, tools: tools, det: det, sum: sum, tbody: tbody, ans: ans, sources: sources, stat: stat };
     }
 
     var TOOL_LABELS = { save_memory: 'Memory saved', save_handoff: 'Handoff saved', read_memory: 'Memory read', list_files: 'Files listed', read_file: 'File read', write_file: 'File written' };
@@ -1996,6 +2046,13 @@
                   // their message triggered a skill, and which one.
                   var skillNote = el('div', 'memory-note', '⚙ skill invoked: ' + (parsed.title || ''));
                   thread.insertBefore(skillNote, ui.wrap);
+                  if (isAtBottom()) scrollToBottom();
+                  return;
+                }
+                if (parsed.ayre_event === 'rag_sources') {
+                  // The turn was grounded: render the "Sources consulted" list (titles
+                  // only) and, when the user enabled it, the retrieved-context preview.
+                  renderRagSources(ui.sources, parsed.sources || [], parsed.previews);
                   if (isAtBottom()) scrollToBottom();
                   return;
                 }
@@ -3003,10 +3060,85 @@
     }
 
     document.addEventListener('ayre:nav', function (e) {
-      if (e.detail.view === 'tools') loadToolPanel();
+      if (e.detail.view === 'tools') { loadToolPanel(); if (window.loadRagPanel) window.loadRagPanel(); }
     });
 
     loadToolPanel();
+  })();
+
+  /* ── RAG library panel (Tools view) ── */
+  (function wireRagPanel() {
+    var panel = document.getElementById('ragPanel');
+    if (!panel) return;
+
+    function toggleBtn(on) {
+      return el('button', 'tool-toggle' + (on ? ' on' : ''), on ? 'on' : 'off');
+    }
+
+    function post(key, enabled) {
+      return fetch('/api/rag/toggle', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: key, enabled: enabled })
+      }).then(function (r) { return r.json(); });
+    }
+
+    function render(st) {
+      panel.innerHTML = '';
+      if (!st || !st.available) {
+        panel.appendChild(textEl('div', 'muted', 'RAG is unavailable on this install.'));
+        return;
+      }
+      // Status line: built index → counts; no index → the non-blocking build notice.
+      var status = el('div', 'rag-status');
+      if (st.ready) {
+        var c = (st.chunk_count || 0).toLocaleString('en-US');
+        var a = st.article_count ? st.article_count.toLocaleString('en-US') + ' articles · ' : '';
+        status.appendChild(textEl('span', 'rag-status-ok', '✓ Index ready'));
+        status.appendChild(textEl('span', 'rag-status-detail', (st.corpus_label || 'Corpus') + ' — ' + a + c + ' passages'));
+      } else {
+        status.appendChild(textEl('span', 'rag-status-none', '○ No index found'));
+        status.appendChild(textEl('span', 'rag-status-detail',
+          st.error ? ('build one to enable retrieval (' + st.error + ')') : 'build one to enable retrieval'));
+      }
+      panel.appendChild(status);
+
+      // Toggle: RAG on/off. Disabled (with a hint) until an index exists — turning it
+      // on with no index would just be a silent no-op every turn.
+      var row1 = el('div', 'rag-toggle-row');
+      row1.appendChild(textEl('span', 'rag-toggle-label', 'Use retrieval in chat'));
+      var t1 = toggleBtn(st.enabled);
+      if (!st.ready) { t1.disabled = true; t1.title = 'Build an index first'; }
+      row1.appendChild(t1);
+      panel.appendChild(row1);
+      t1.addEventListener('click', function () {
+        if (t1.disabled) return;
+        t1.disabled = true;
+        post('enabled', !st.enabled).then(function (d) {
+          if (d.ok) render(d); else t1.disabled = false;
+        }).catch(function () { t1.disabled = false; });
+      });
+
+      // Toggle: show retrieved context (the raw injected passages preview).
+      var row2 = el('div', 'rag-toggle-row');
+      row2.appendChild(textEl('span', 'rag-toggle-label', 'Show retrieved context under replies'));
+      var t2 = toggleBtn(st.show_retrieved_context);
+      row2.appendChild(t2);
+      panel.appendChild(row2);
+      t2.addEventListener('click', function () {
+        t2.disabled = true;
+        post('show_retrieved_context', !st.show_retrieved_context).then(function (d) {
+          if (d.ok) render(d); else t2.disabled = false;
+        }).catch(function () { t2.disabled = false; });
+      });
+    }
+
+    window.loadRagPanel = function () {
+      panel.innerHTML = '<div class="muted">Loading…</div>';
+      getJSON('/api/rag').then(render).catch(function () {
+        panel.innerHTML = '<div class="muted">Could not load RAG status.</div>';
+      });
+    };
+    window.loadRagPanel();
   })();
 
   /* ── Tool quick-actions bar (chat view) ── */

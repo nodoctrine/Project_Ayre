@@ -18,6 +18,14 @@ python/*
 *.bin
 *.safetensors
 
+# --- RAG index: large generated artifact, lives in Ayre_Corpus/ (outside the app
+#     tree) but blanket-ignore *.db anywhere so it can never be committed by accident.
+#     The corpus dump + index db are user-built/consume-only (Distribution_Contents
+#     'never-in-repo'); Ayre never fetches or ships them. See RAG_v0_Build_Plan.md.
+*.db
+*.db-wal
+*.db-shm
+
 # --- Python build artifacts ---
 __pycache__/
 *.py[cod]

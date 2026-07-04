@@ -906,6 +906,33 @@ section.view.active { display:flex; }
   background:color-mix(in srgb,var(--signal) 10%,transparent); }
 .tool-toggle:hover { color:var(--ink-dim); border-color:var(--ink-dim); }
 .tool-toggle.on:hover { color:var(--signal); filter:brightness(1.1); }
+.tool-toggle:disabled { opacity:0.4; cursor:default; }
+.tool-toggle:disabled:hover { color:var(--ink-faint); border-color:var(--line); }
+
+/* RAG library panel (Tools view): index status + the two toggles. Bones not skin. */
+.rag-panel { display:flex; flex-direction:column; gap:12px; padding:4px 0 2px; }
+.rag-status { display:flex; flex-direction:column; gap:3px; padding:8px 12px;
+  border:1px solid var(--line); border-radius:var(--pill-radius); background:var(--panel); }
+.rag-status-ok { font-family:var(--mono); font-size:11.5px; color:var(--signal); }
+.rag-status-none { font-family:var(--mono); font-size:11.5px; color:var(--ink-dim); }
+.rag-status-detail { font-family:var(--mono); font-size:10.5px; color:var(--ink-faint); }
+.rag-toggle-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0 2px; }
+.rag-toggle-label { font-family:var(--mono); font-size:11px; color:var(--ink-dim); }
+
+/* RAG "Sources consulted" list + retrieved-context preview (under a grounded reply) */
+.rag-sources[hidden] { display:none; }
+.rag-sources { margin-top:8px; padding-top:8px; border-top:1px dashed var(--line); }
+.rag-sources-head { font-family:var(--mono); font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:5px; }
+.rag-sources-list { list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:6px; }
+.rag-source-item { font-family:var(--mono); font-size:11px; color:var(--ink-dim);
+  background:var(--panel); border:1px solid var(--line); border-radius:var(--pill-radius); padding:2px 9px; }
+.rag-context { margin-top:8px; }
+.rag-context > summary { font-family:var(--mono); font-size:10.5px; color:var(--ink-faint); cursor:pointer; list-style:revert; }
+.rag-context-chunk { margin-top:8px; padding:8px 10px; border-left:2px solid var(--line); background:color-mix(in srgb,var(--panel) 60%,transparent); }
+.rag-context-title { font-family:var(--mono); font-size:10.5px; color:var(--ink-dim); margin-bottom:4px; }
+.rag-context-body { font-size:12.5px; color:var(--ink-dim); line-height:1.55; white-space:pre-wrap; }
+.rag-context-fr { font-family:var(--mono); font-size:10px; color:var(--ink-faint); margin-top:5px; font-style:italic; }
+
 /* Tool disable warning (expands inside the card) */
 .tool-warn[hidden] { display:none; }
 .tool-warn { border-top:1px solid color-mix(in srgb,var(--amber) 28%,transparent);

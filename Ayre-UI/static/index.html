@@ -348,13 +348,14 @@
             </div>
           </div>
 
-          <div class="sec-head collapsible collapsed" data-target="sec-kiwix">
-            <h2>Kiwix ZIM library</h2><span class="rule"></span><span class="sec-chevron">▾</span>
+          <div class="sec-head collapsible collapsed" data-target="sec-rag">
+            <h2>RAG library</h2><span class="rule"></span><span class="sec-chevron">▾</span>
           </div>
-          <div class="sec-body" id="sec-kiwix" hidden>
-            <div class="placeholder">
-              <span class="tag">deferred — Slice 4</span>
-              <p>BM25 offline search over your local ZIM archives. Matched content is retrieved and injected as context before each turn — no embeddings, no internet.</p>
+          <div class="sec-body" id="sec-rag" hidden>
+            <!-- TODO(you): reword this description in your voice (bones not skin). -->
+            <p class="subnote">BM25 offline search over a local Wikipedia corpus. When on, matched passages are retrieved and injected as background context before each turn — no embeddings, no internet. Build the index once with <code>python -m ayre_rag ingest --dump &lt;dump.xml.bz2&gt;</code>, then turn it on here.</p>
+            <div id="ragPanel" class="rag-panel">
+              <div class="muted">Loading…</div>
             </div>
           </div>
         </div></div>
