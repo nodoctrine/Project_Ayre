@@ -1,3 +1,10 @@
 {
-  "skills": []
+  "skills": [
+    {
+      "id": "1783129795327",
+      "title": "Flow Chart",
+      "description": "Improves HTML generation by providing reference steps.",
+      "workflow": "Take each section of text and encapsulate it in a rectangle. \nConnect the rectangles by arrows showing the sequence in a flow chart."
+    }
+  ]
 }

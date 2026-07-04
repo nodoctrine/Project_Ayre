@@ -1822,6 +1822,14 @@
                   if (isAtBottom()) scrollToBottom();
                   return;
                 }
+                if (parsed.ayre_event === 'skill_invoked') {
+                  // Same treatment as the memory note: the user should see that
+                  // their message triggered a skill, and which one.
+                  var skillNote = el('div', 'memory-note', '⚙ skill invoked: ' + (parsed.title || ''));
+                  thread.insertBefore(skillNote, ui.wrap);
+                  if (isAtBottom()) scrollToBottom();
+                  return;
+                }
                 if (parsed.ayre_event === 'round_start') {
                   // A new model round is prefilling/generating — show liveness until
                   // its first token streams (or the next event lands). Kills the
