@@ -1719,6 +1719,13 @@ class AyreUIHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
+        # These static assets (index.html / app.js / app.css) are LOCAL and MUTABLE --
+        # they change every time the app is updated. BaseHTTPRequestHandler sends no
+        # Last-Modified/ETag, so with no cache directive the browser applies heuristic
+        # caching and can execute a STALE app.js after an update (e.g. a fresh index.html
+        # paired with an old, un-gated app.js). Match the JSON/SSE handlers' no-store so a
+        # reload always runs the current build. Cost is nil -- these are served over loopback.
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
 
