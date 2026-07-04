@@ -112,11 +112,13 @@
             <p class="chat-status" id="chatStatus">Checking the local model…</p>
           </div>
           <div class="chat-main">
-            <!-- Ambient "Ayre is thinking" tendril field: blooms in the top-left only
-                 while the model is generating, then fades out. Toggle in Settings →
-                 Appearance (default on); disabled under prefers-reduced-motion. -->
-            <canvas class="think-viz" id="ctxTendril" width="200" height="200" aria-hidden="true"></canvas>
             <div class="chat-col">
+              <!-- Ambient "Ayre is thinking" tendril field: blooms from the dead
+                   center of the chat column, BEHIND the message boxes, while the
+                   model generates — more tendrils and further reach the longer it
+                   thinks — then fades out. Toggle in Settings → Appearance (default
+                   on); also suppressed by the Reduce Motion setting. -->
+              <canvas class="think-viz" id="ctxTendril" width="440" height="440" aria-hidden="true"></canvas>
             <div class="chat-thread" id="chatThread">
                 <div class="chat-empty" id="chatEmpty">Ask Ayre something to begin. Replies come from your local model — nothing leaves this machine.</div>
               </div>
@@ -409,7 +411,15 @@
 
           <div class="sec-head"><h2>Appearance</h2><span class="rule"></span></div>
           <p style="color:var(--ink-dim);font-size:13.5px;margin:0 0 14px">Six runtime-swappable themes — every color, font and effect is a CSS variable. Use the switcher in the top bar; the signature gunmetal/orange/cyan palette ships as <b>Ayre</b> and is the default.</p>
-          <p class="subnote">The <b>Ayre thinking visual</b> — a tendril field that blooms in the top-left of the chat while the model is generating (more tendrils as it thinks, reaching further as the chat grows), then fades out. Purely ambient; it animates only during a reply. The context meter's two bars are always shown either way. Falls back to off if your system prefers reduced motion.</p>
+          <!-- TODO(you): reword the two Appearance subnotes below in your voice. -->
+          <p class="subnote"><b>Reduce motion</b> quiets Ayre's ambient animations — the thinking-visual tendrils, the status-dot pulse, the streaming cursor, the working indicator, and the tip ticker's slide. <b>System</b> follows your operating system's reduced-motion setting; <b>On</b> and <b>Off</b> force it either way. The tip ticker keeps rotating tips regardless — it just swaps them in place instead of sliding when motion is reduced.</p>
+          <div class="motion-switch" role="group" aria-label="Reduce motion">
+            <span class="tlabel">REDUCE MOTION</span>
+            <button data-motion="system" aria-pressed="true">System</button>
+            <button data-motion="on" aria-pressed="false">On</button>
+            <button data-motion="off" aria-pressed="false">Off</button>
+          </div>
+          <p class="subnote">The <b>Ayre thinking visual</b> — a tendril field that blooms from the center of the chat, behind your messages, while the model is generating (more tendrils reaching further the longer it thinks), then fades out. Purely ambient; it animates only during a reply. The context meter's two bars are always shown either way. Suppressed while Reduce Motion (above) is active — the two are independent gates.</p>
           <div class="viz-switch" role="group" aria-label="Thinking visual">
             <span class="tlabel">THINKING VISUAL</span>
             <button data-viz="on" aria-pressed="true">On</button>

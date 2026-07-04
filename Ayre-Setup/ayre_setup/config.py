@@ -45,6 +45,81 @@ def load_optimizer() -> dict:
     return _load_json(config_dir() / "optimizer.json")
 
 
+def load_backends() -> dict:
+    """Backend binary selection matrix (config/backends.json): maps (OS, GPU
+    vendor) -> which llama-server build to launch. Variable-first cross-platform
+    prep -- v1 ships one entry (Windows + NVIDIA -> the CUDA build in bin/); the
+    rest are placeholders. Optional: a missing/unparseable file just makes
+    resolve_binary_path() fall back to the built-in v1 default, so a bad edit
+    never blocks a launch (same forgiving contract as load_coaching)."""
+    try:
+        return _load_json(config_dir() / "backends.json")
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def resolve_binary_path(
+    gpu_vendor: str | None = None,
+    *,
+    os_name: str | None = None,
+    bin_dir: str | None = None,
+    backends: dict | None = None,
+) -> tuple[Path, str]:
+    """The single place the (OS, GPU vendor) -> llama-server binary decision is
+    made, driven by config/backends.json (variable-first). Both the launch-spec
+    builder and the Setup doctor route through here, so they can never disagree on
+    which file is 'the' binary. Returns (path, rationale) -- the rationale is
+    logged/displayed per the document-tier-reasoning rule.
+
+    gpu_vendor=None -> use the per-OS '_default' backend. That is what the doctor
+    passes: it shouldn't spin up a GPU probe just to locate a file, and on v1's
+    single Windows/NVIDIA build the default IS the shipping build. A launch that
+    already has a hardware probe in hand passes the probed primary vendor, so a
+    multi-build v2.0 install picks the vendor-correct binary.
+
+    Falls back to the built-in ayre_usb_root()/bin_dir/llama_server_binary_name()
+    -- today's exact v1 path -- whenever backends.json is absent, malformed, or has
+    no usable entry for this (OS, vendor). A corrupt config degrades to the
+    shipping default instead of failing to launch."""
+    root = platform_layer.ayre_usb_root()
+    if bin_dir is None:
+        bin_dir = load_runtime().get("bin_dir", "bin")
+    os_name = os_name or platform_layer.current_os()
+    backends = backends if backends is not None else load_backends()
+
+    def _builtin_default(reason: str) -> tuple[Path, str]:
+        name = platform_layer.llama_server_binary_name()
+        return root / bin_dir / name, f"{reason} -> built-in default '{name}'"
+
+    matrix = (backends.get("matrix") or {}).get(os_name) or {}
+    specs = backends.get("backends") or {}
+    if not matrix or not specs:
+        return _builtin_default(f"backends.json has no entry for OS '{os_name}'")
+
+    if gpu_vendor and gpu_vendor in matrix:
+        backend_id = matrix[gpu_vendor]
+        why = f"backends.json: {os_name} + {gpu_vendor} -> '{backend_id}'"
+    elif matrix.get("_default"):
+        backend_id = matrix["_default"]
+        suffix = "" if gpu_vendor is None else f" (vendor '{gpu_vendor}' unlisted)"
+        why = f"backends.json: {os_name} default -> '{backend_id}'{suffix}"
+    else:
+        return _builtin_default(f"backends.json has no default for OS '{os_name}'")
+
+    spec = specs.get(backend_id) or {}
+    base = spec.get("binary")
+    if not base:
+        return _builtin_default(f"backends.json backend '{backend_id}' has no 'binary'")
+
+    default_suffix = ".exe" if os_name == "Windows" else ""
+    suffix = (backends.get("os_binary_suffix") or {}).get(os_name, default_suffix)
+    filename = f"{base}{suffix}"
+    subdir = spec.get("subdir") or ""
+    path = (root / bin_dir / subdir / filename) if subdir else (root / bin_dir / filename)
+    label = spec.get("label", backend_id)
+    return path, f"{why} ({label}) -> {filename}"
+
+
 def load_coaching() -> dict:
     """User-facing coaching copy (config/coaching.json): quant tradeoffs today,
     room for more surfaces later. Optional -- a missing or unparseable file just
@@ -480,11 +555,12 @@ def build_launch_spec(
                         f"{reason}); using tier defaults -- preset and manual "
                         "choices have no effect until this is resolved."]
 
-    binary = (
-        platform_layer.ayre_usb_root()
-        / runtime["bin_dir"]
-        / platform_layer.llama_server_binary_name()
-    )
+    # Binary selection routes through the (OS, GPU vendor) -> build seam
+    # (config/backends.json). Pass the probed primary vendor when a probe is
+    # already in hand (auto-tune path); otherwise fall back to the per-OS default,
+    # which on v1's single Windows/NVIDIA build is the shipping binary either way.
+    binary_vendor = probe.primary_gpu_vendor if probe is not None else None
+    binary, binary_reason = resolve_binary_path(binary_vendor, bin_dir=runtime["bin_dir"])
 
     return LaunchSpec(
         binary=binary,
@@ -501,6 +577,7 @@ def build_launch_spec(
             "context": context_reason,
             "n_gpu_layers": ngl_reason,
             "optimizer": optimizer_rationale,
+            "binary": binary_reason,
         },
         warnings=warnings,
         fit=fit,

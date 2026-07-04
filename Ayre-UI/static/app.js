@@ -854,6 +854,60 @@
      are measured against the USABLE window (total minus the reserved handoff
      headroom); the striped bracket at the top of the bar is that reserved space.
      The handoff flow the red zone primes lands in a later sub-slice (3c). */
+  /* ── Reduced-motion state (shared) ──
+     One resolved source of truth for "should motion be quiet right now?", read by
+     every animated surface. The choice is a per-client preference in localStorage:
+       'system' (default) — follow the OS prefers-reduced-motion query
+       'on'   — force motion reduced, regardless of the OS
+       'off'  — force motion allowed, regardless of the OS
+     The resolved boolean is stamped as data-reduce-motion="reduce" on :root, so the
+     CSS-driven animations (status-dot pulse, streaming cursor, working stat) can
+     quiet through one attribute selector; the JS-driven surfaces (favicon ring,
+     tendril field, tip ticker) subscribe() and quiet themselves. Override works in
+     EITHER direction because the OS query is consulted ONLY in 'system' mode — a bare
+     @media query could never honor a force-'off'. */
+  var reduceMotion = (function () {
+    var KEY = 'ayre.reduceMotion';
+    var mq = (window.matchMedia) ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    var subs = [];
+    var mode = 'system';
+    try { mode = localStorage.getItem(KEY) || 'system'; } catch (e) { /* private mode -> default */ }
+    if (mode !== 'on' && mode !== 'off') mode = 'system';
+
+    function resolved() {
+      if (mode === 'on') return true;
+      if (mode === 'off') return false;
+      return !!(mq && mq.matches);
+    }
+    function apply() {
+      var r = resolved();
+      if (r) document.documentElement.setAttribute('data-reduce-motion', 'reduce');
+      else document.documentElement.removeAttribute('data-reduce-motion');
+      for (var i = 0; i < subs.length; i++) { try { subs[i](r); } catch (e) { /* keep going */ } }
+    }
+    // Re-resolve if the OS preference flips (only changes anything in 'system' mode,
+    // but re-applying in any mode is harmless and idempotent).
+    if (mq) {
+      var onChange = function () { apply(); };
+      if (mq.addEventListener) mq.addEventListener('change', onChange);
+      else if (mq.addListener) mq.addListener(onChange);   // older engines
+    }
+    apply();   // stamp :root immediately at startup (before any subscribers exist)
+
+    return {
+      mode: function () { return mode; },
+      isReduced: function () { return resolved(); },
+      set: function (m) {
+        if (m !== 'on' && m !== 'off') m = 'system';
+        mode = m;
+        try { localStorage.setItem(KEY, m); } catch (e) { /* private mode -> in-memory only */ }
+        apply();
+      },
+      // fn(reducedBool) runs now with the current state and again on every change.
+      subscribe: function (fn) { subs.push(fn); try { fn(resolved()); } catch (e) { /* ignore */ } }
+    };
+  })();
+
   /* ── Browser tab favicon (live status) ──
      Solid --signal (theme's cyan) while the engine is up and idle, --amber while
      down. While a turn is generating, a ring breathes outward from the core and
@@ -867,7 +921,7 @@
     if (!link) return null;
     var cv = document.createElement('canvas'); cv.width = cv.height = 32;
     var ctx = cv.getContext('2d');
-    var engineUp = false, thinking = false, timer = null, t0 = 0;
+    var engineUp = false, thinking = false, timer = null, t0 = 0, reduced = false;
     var PERIOD_MS = 2400, STEP_MS = 150;   // cadence matched to the .dot chip's pulse
 
     function colorVar(name, fallback) {
@@ -895,7 +949,7 @@
     }
 
     function sync() {
-      if (thinking) {
+      if (thinking && !reduced) {          // reduced motion: skip the breathing ring, hold the solid dot
         if (!timer) {
           t0 = Date.now();
           timer = setInterval(function () {
@@ -908,26 +962,30 @@
       }
     }
 
-    draw(null);
+    reduceMotion.subscribe(function (r) { reduced = r; sync(); });   // quiet/restore the breathing ring live
     return {
       engine: function (up) { engineUp = !!up; sync(); },
       thinking: function (active) { thinking = !!active; sync(); }
     };
   })();
 
-  /* ── Thinking visual (ambient top-left tendril overlay) ──
+  /* ── Thinking visual (ambient centered tendril field, behind the chat) ──
      A reuse of the Ayre splash: tendrils radiating from a breathing core node, drawn
-     over the top-left of the chat. Driven live by the meter — COUNT grows with active
-     context (the think), REACH grows with total chat. It animates ONLY during a turn
-     and fades to transparency at rest; the rAF loop fully stops when idle, pauses on
-     tab-blur, and is skipped under prefers-reduced-motion (toggle then forced off). */
+     from the dead center of the chat column, BEHIND the message boxes (CSS: negative
+     z-index in the column's isolated stacking context). Driven live by the meter —
+     COUNT grows with active context (the think), REACH grows with total chat — and by
+     think-time: both expand the longer a single turn runs (see `grow`). It animates
+     ONLY during a turn and fades to transparency at rest; the rAF loop fully stops
+     when idle, pauses on tab-blur, and stays dark while motion is reduced (applyGate).
+     The widget is always built (so a force-'off' Reduce Motion can revive it even when
+     the OS prefers reduced motion) — actual rendering is gated, not the construction. */
   var ctxTendrils = (function wireTendrils() {
     var canvas = document.getElementById('ctxTendril');
     if (!canvas || !canvas.getContext) return null;
-    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
     var ctx = canvas.getContext('2d');
     var W = canvas.width, H = canvas.height, CX = W / 2, CY = H / 2;
     var MAXR = Math.min(CX, CY) - 6;        // longest a tendril can reach (px)
+    var GROW_TAU = 14;                      // seconds; how fast the field expands as the model keeps thinking (eased 0→1)
 
     var SIGNAL = '#3ddbe6';
     function refreshColors() {
@@ -958,6 +1016,8 @@
     var on = false, rafId = null, lastT = 0, t0 = -1, offset = 0;
     var env = 0, turnActive = false;                 // env: 0 at rest, eases to 1 mid-turn
     var aTar = 0, cTar = 0, aCur = 0, cCur = 0;       // active/chat targets + eased values
+    var grow = 0, turnStartTs = -1;                   // grow: 0→1 think-time expansion; turnStartTs: rAF ts this turn began
+    var pref = false, reduced = false;                // pref = Appearance toggle; reduced = resolved reduced-motion (render only when pref && !reduced)
 
     function breath(time) { return 0.5 - 0.5 * Math.cos(time / 3 * Math.PI * 2); }
 
@@ -987,10 +1047,19 @@
       if (!turnActive && env < 0.02) { rafId = null; return; }   // faded out: stop burning frames
 
       var b = breath(time);
-      // sqrt curve so even a light think shows tendrils; chat sets how far they reach.
-      var countF = Math.sqrt(Math.max(0, Math.min(1, aCur))) * MAX;   // fractional count
+      // Think-time growth: the field EXPANDS the longer the model runs this turn —
+      // an eased 0→1 ramp over ~GROW_TAU seconds of continuous generation, decaying
+      // back to 0 as the turn ends (env fades alongside it).
+      if (turnActive && turnStartTs < 0) turnStartTs = ts;
+      var thinkSecs = (turnActive && turnStartTs >= 0) ? (ts - turnStartTs) / 1000 : 0;
+      var growTar = turnActive ? (1 - Math.exp(-thinkSecs / GROW_TAU)) : 0;
+      grow += (growTar - grow) * Math.min(1, dt * 3);
+      // COUNT (how many tendrils) rises with the active "think" AND with think-time;
+      // REACH (how far they extend) rises with total chat AND with think-time. sqrt
+      // curve so even a light think shows some tendrils.
+      var countF = Math.sqrt(Math.max(0, Math.min(1, aCur + 0.45 * grow))) * MAX;
       var count = Math.ceil(countF);
-      var reach = 0.30 + Math.max(0, Math.min(1, cCur)) * 0.70;
+      var reach = Math.min(1, 0.30 + 0.30 * Math.max(0, Math.min(1, cCur)) + 0.55 * grow);
 
       ctx.save(); ctx.shadowColor = SIGNAL; ctx.shadowBlur = 4;
       for (var i = 0; i < count; i++) {
@@ -1021,19 +1090,27 @@
       else if (on && (turnActive || env > 0.02)) ensureRunning();
     });
 
+    // Rendering requires BOTH the Appearance toggle (pref) AND motion not being
+    // reduced — the tendril toggle and the global Reduce Motion setting are independent
+    // gates that AND together, so either one off keeps the field dark.
+    function applyGate() {
+      var want = pref && !reduced;
+      if (want === on) return;
+      on = want;
+      if (!on) { if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; } ctx.clearRect(0, 0, W, H); }
+      else { refreshColors(); if (turnActive || env > 0.02) ensureRunning(); }
+    }
+    reduceMotion.subscribe(function (r) { reduced = r; applyGate(); });
+
     return {
-      // mode on/off: when off, stop the loop and clear the canvas.
-      enabled: function (yes) {
-        on = !!yes;
-        if (!on) { if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; } ctx.clearRect(0, 0, W, H); }
-        else { refreshColors(); if (turnActive || env > 0.02) ensureRunning(); }
-      },
+      // The Appearance toggle sets the user's preference; render stays gated by reduced-motion.
+      enabled: function (yes) { pref = !!yes; applyGate(); },
       setData: function (active, chat) {
         aTar = Math.max(0, Math.min(1, active || 0));
         cTar = Math.max(0, Math.min(1, chat || 0));
       },
-      start: function () { turnActive = true; ensureRunning(); },   // turn began: bloom
-      stop: function () { turnActive = false; ensureRunning(); }    // turn ended: fade out
+      start: function () { turnActive = true; turnStartTs = -1; ensureRunning(); },  // turn began: bloom + restart think-time growth
+      stop: function () { turnActive = false; ensureRunning(); }                     // turn ended: fade out
     };
   })();
 
@@ -1259,9 +1336,11 @@
 
   /* ── Thinking-visual toggle (Settings → Appearance) ──
      Per-client preference in localStorage: 'on' (default) or 'off'. Controls the
-     ambient tendril field that blooms top-left while the model generates. When the
-     widget is unavailable (reduced-motion or no canvas) the choice is forced off and
-     the On button disabled so the toggle stays honest. The two context bars always show. */
+     ambient tendril field that blooms behind the chat while the model generates.
+     Independent of the global Reduce Motion setting: the field renders only when this
+     toggle is On AND motion isn't reduced (the tendril module's applyGate ANDs them).
+     When no canvas is available the choice is forced off and the On button disabled so
+     the toggle stays honest. The two context bars always show. */
   (function wireThinkingVisual() {
     var btns = Array.prototype.slice.call(document.querySelectorAll('.viz-switch button'));
     var KEY = 'ayre.thinkingVisual';
@@ -1279,7 +1358,7 @@
     btns.forEach(function (b) {
       if (!canViz && b.getAttribute('data-viz') === 'on') {
         b.disabled = true;
-        b.title = 'Unavailable — your system prefers reduced motion (or this browser lacks canvas).';
+        b.title = 'Unavailable — this browser can’t draw the visual (no canvas support).';
       }
       b.addEventListener('click', function () { if (!b.disabled) apply(b.getAttribute('data-viz')); });
     });
@@ -1287,6 +1366,28 @@
     var saved = 'on';
     try { saved = localStorage.getItem(KEY) || 'on'; } catch (e) { /* default on */ }
     apply(saved);
+  })();
+
+  /* ── Reduce Motion tri-state (Settings → Appearance) ──
+     Drives the shared reduceMotion module: System / On / Off. The module persists the
+     choice, stamps :root, and notifies every animated surface; here we only paint the
+     button states. System changes never alter the mode, so no subscription is needed. */
+  (function wireMotionSwitch() {
+    var btns = Array.prototype.slice.call(document.querySelectorAll('.motion-switch button'));
+    if (!btns.length) return;
+    function paint(mode) {
+      btns.forEach(function (b) {
+        b.setAttribute('aria-pressed', b.getAttribute('data-motion') === mode ? 'true' : 'false');
+      });
+    }
+    btns.forEach(function (b) {
+      b.addEventListener('click', function () {
+        var m = b.getAttribute('data-motion');
+        reduceMotion.set(m);
+        paint(m);
+      });
+    });
+    paint(reduceMotion.mode());
   })();
 
   /* ── Chat hardware monitor (offload split + temperatures) ──
@@ -3219,15 +3320,29 @@
     var textEl = document.getElementById('tipText');
     if (!track || !textEl) return;
 
+    var STATIC_HOLD_MS = 7000;   // reduced-motion: how long each tip holds before swapping (no slide)
+
     var idx = 0;
+    var cycle = 0;               // bumped each next(); stale scheduled steps compare and bail
+    var reduced = false;
+    var started = false;
 
     function next() {
+      var mine = ++cycle;
       textEl.textContent = TIPS[idx % TIPS.length];
       idx++;
 
+      if (reduced) {
+        // Reduced motion: keep rotating tips, but swap them in place with no slide.
+        textEl.style.transition = 'none';
+        textEl.style.left = '0';
+        setTimeout(function () { if (mine === cycle) next(); }, STATIC_HOLD_MS);
+        return;
+      }
+
       var cw = track.offsetWidth;
       var tw = textEl.offsetWidth;
-      if (!cw || !tw) { setTimeout(next, 500); return; }
+      if (!cw || !tw) { setTimeout(function () { if (mine === cycle) next(); }, 500); return; }
 
       // Snap to right edge (no transition)
       textEl.style.transition = 'none';
@@ -3242,19 +3357,39 @@
       textEl.style.left = '0';
 
       setTimeout(function () {
+        if (mine !== cycle) return;
         // Phase 2: hang at left edge (no transform change needed)
         setTimeout(function () {
+          if (mine !== cycle) return;
           // Phase 3: scroll off left
           var phase3 = Math.round(tw / SPEED_OUT * 1000);
           textEl.style.transition = 'left ' + phase3 + 'ms linear';
           textEl.style.left = '-' + tw + 'px';
 
-          setTimeout(next, phase3 + GAP_MS);
+          setTimeout(function () { if (mine === cycle) next(); }, phase3 + GAP_MS);
         }, HANG_MS);
       }, phase1);
     }
 
-    setTimeout(next, 1800);  // brief delay so the UI fully settles before first tip
+    // React to Reduce Motion flips at runtime. Entering reduced mid-slide: snap the
+    // current tip to rest (bumping `cycle` cancels the in-flight scroll steps) and
+    // restart the rotation in static mode. Leaving reduced simply lets the next cycle
+    // scroll again. The first launch is deferred to `started` so this immediate call
+    // (subscribe fires now with the current state) can't double-start the loop.
+    reduceMotion.subscribe(function (r) {
+      var was = reduced;
+      reduced = r;
+      if (!started) return;
+      if (r && !was) {
+        cycle++;
+        textEl.style.transition = 'none';
+        textEl.style.left = '0';
+        setTimeout(next, GAP_MS);
+      }
+    });
+
+    started = true;
+    setTimeout(next, reduced ? GAP_MS : 1800);  // brief delay so the UI settles before the first tip
   })();
 
 })();

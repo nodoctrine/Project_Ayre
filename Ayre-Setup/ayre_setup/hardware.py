@@ -42,6 +42,7 @@ class MachineProfile:
     primary_vram_total_bytes: int         # the spine: largest dedicated GPU
     primary_vram_free_bytes: int | None   # None when the source can't report free
     primary_gpu_name: str | None
+    primary_gpu_vendor: str | None        # spine GPU's vendor -- the axis backends.json selects on
     suggested_tier: str | None
     detected_at: float                    # epoch seconds (for "last scanned" display)
     rationale: dict                       # why each value is what it is
@@ -90,6 +91,7 @@ def probe_machine() -> MachineProfile:
     primary_vram = primary["vram_total_bytes"] if primary else 0
     primary_free = primary.get("vram_free_bytes") if primary else None
     primary_name = primary["name"] if primary else None
+    primary_vendor = primary.get("vendor") if primary else None
 
     if not gpus:
         warnings.append("No GPU detected -- treating as CPU-only (VRAM = 0). "
@@ -132,6 +134,7 @@ def probe_machine() -> MachineProfile:
         primary_vram_total_bytes=primary_vram,
         primary_vram_free_bytes=primary_free,
         primary_gpu_name=primary_name,
+        primary_gpu_vendor=primary_vendor,
         suggested_tier=suggested_tier,
         detected_at=time.time(),
         rationale=rationale,

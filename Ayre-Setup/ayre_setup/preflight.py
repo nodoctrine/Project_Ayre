@@ -26,7 +26,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import platform_layer
 from .config import (
     LaunchSpec,
     NoModelError,
@@ -175,17 +174,15 @@ class DoctorReport:
 
 
 def binary_path() -> Path:
-    runtime = _runtime()
-    return (
-        platform_layer.ayre_usb_root()
-        / runtime["bin_dir"]
-        / platform_layer.llama_server_binary_name()
-    )
-
-
-def _runtime() -> dict:
-    from .config import load_runtime
-    return load_runtime()
+    """The llama-server binary this machine would launch. Routes through the
+    (OS, GPU vendor) -> build seam (config.resolve_binary_path) so the doctor and
+    the launch-spec builder never disagree on which file is 'the' binary. The
+    doctor passes no vendor -> the per-OS default build (a GPU probe just to locate
+    a file would be wasteful; on v1's single Windows/NVIDIA build the default is
+    the shipping binary regardless)."""
+    from .config import resolve_binary_path
+    path, _ = resolve_binary_path()
+    return path
 
 
 def required_artifacts() -> list[ArtifactStatus]:
@@ -194,7 +191,7 @@ def required_artifacts() -> list[ArtifactStatus]:
 
     b = binary_path()
     statuses.append(
-        ArtifactStatus("binary", platform_layer.llama_server_binary_name(), b, b.exists())
+        ArtifactStatus("binary", b.name, b, b.exists())
     )
 
     for name in ("tiers.json", "runtime.json"):

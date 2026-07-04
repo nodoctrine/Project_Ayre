@@ -530,6 +530,20 @@ section.view.active { display:flex; }
 .tip-text { position:absolute; top:0; left:0; line-height:26px; white-space:nowrap;
   font-family:var(--mono); font-size:11px; color:var(--ink-dim); }
 
+/* ── Reduced motion ──────────────────────────────────────────────────────
+   When motion is reduced, app.js's reduceMotion module stamps
+   data-reduce-motion="reduce" on :root (resolving the OS query in 'system'
+   mode, or a forced On/Off). The CSS-driven ambient animations below hold on
+   a static frame. The JS-driven surfaces (tendril field, favicon breathing
+   ring, tip ticker) read the same resolved state in app.js and quiet
+   themselves there — the ticker keeps rotating tips, just swapping them in
+   place instead of sliding. Deliberately attribute-based, not an @media
+   query, so a forced 'Off' can re-enable motion even when the OS prefers
+   reduced. */
+:root[data-reduce-motion="reduce"] .dot { animation:none; }
+:root[data-reduce-motion="reduce"] .msg.assistant.streaming .answer::after { animation:none; }
+:root[data-reduce-motion="reduce"] .msg-stat.working { animation:none; }
+
 /* ── Send confirm states (yellow / red context warnings) ─────────────────── */
 .chat-composer button.send-confirm-yellow { background:transparent; color:var(--amber);
   border-color:var(--amber); }
@@ -573,7 +587,8 @@ section.view.active { display:flex; }
    The chat head spans full width; below it the conversation column and a narrow
    vertical meter sit side by side. */
 .chat-main { flex:1; min-height:0; display:flex; position:relative; }
-.chat-col { flex:1; min-width:0; display:flex; flex-direction:column; }
+.chat-col { flex:1; min-width:0; display:flex; flex-direction:column;
+  position:relative; isolation:isolate; }  /* anchor + scope the behind-messages thinking visual */
 
 /* Right rail: context meter (top, grows) + hardware monitor (bottom, auto). */
 .chat-rail { flex:0 0 auto; width:150px; overflow:hidden; display:flex; flex-direction:column;
@@ -619,10 +634,12 @@ section.view.active { display:flex; }
   font-family:var(--mono); font-size:8.5px; line-height:1.5; color:var(--ink-faint);
   text-align:center; white-space:pre-wrap; overflow-wrap:break-word; }
 .ctx-debug b { color:var(--signal); font-weight:600; }
-/* Ambient "Ayre is thinking" tendril field — overlays the top-left of the chat,
-   non-interactive, transparent except while a reply is generating. */
-.think-viz { position:absolute; top:6px; left:6px; width:170px; height:170px;
-  pointer-events:none; z-index:4; }
+/* Ambient "Ayre is thinking" tendril field — blooms from the dead center of the
+   chat column, BEHIND the message boxes (negative z-index inside the column's
+   isolated stacking context, below). Non-interactive; transparent except while a
+   reply is generating. max-width keeps it from bleeding past a narrow column. */
+.think-viz { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:440px; height:440px; max-width:100%; pointer-events:none; z-index:-1; }
 /* Thinking-visual toggle (Settings → Appearance) — mirrors .theme-switch. */
 .viz-switch { display:flex; align-items:center; gap:5px; flex-wrap:wrap; margin:0 0 14px; }
 .viz-switch .tlabel { color:var(--ink-faint); font-size:10px; letter-spacing:0.12em; margin-right:2px; }
@@ -633,6 +650,16 @@ section.view.active { display:flex; }
 .viz-switch button[aria-pressed="true"] { color:var(--signal); border-color:var(--signal);
   background:color-mix(in srgb,var(--signal) 12%,transparent); }
 .viz-switch button:disabled { opacity:.45; cursor:not-allowed; }
+
+/* Reduce-motion tri-state (Settings → Appearance) — mirrors .viz-switch. */
+.motion-switch { display:flex; align-items:center; gap:5px; flex-wrap:wrap; margin:0 0 14px; }
+.motion-switch .tlabel { color:var(--ink-faint); font-size:10px; letter-spacing:0.12em; margin-right:2px; }
+.motion-switch button { font-family:var(--mono); font-size:9.5px; letter-spacing:0.06em; text-transform:uppercase;
+  color:var(--ink-dim); background:var(--panel); border:1px solid var(--line); border-radius:var(--pill-radius);
+  padding:4px 8px; cursor:pointer; box-shadow:var(--shadow); transition:color .2s,border-color .2s,background .2s; }
+.motion-switch button:hover { color:var(--ink); border-color:var(--signal-dk); }
+.motion-switch button[aria-pressed="true"] { color:var(--signal); border-color:var(--signal);
+  background:color-mix(in srgb,var(--signal) 12%,transparent); }
 
 /* ── Hardware monitor: per-component offload bar + temperature ──────────── */
 .hw-mon { flex:0 0 auto; width:100%; display:flex; flex-direction:column; gap:12px;

@@ -1,0 +1,49 @@
+{
+  "_comment": "Backend binary selection -- which llama-server build to launch for THIS machine, keyed by (OS, GPU vendor). Variable-first cross-platform prep: v1 ships ONE working entry (Windows + NVIDIA -> the CUDA build at bin/llama-server.exe); the other rows are forward-looking placeholders so v2.0 platform adoption is 'drop in a binary + flip a row here', not code surgery. The resolver (config.py -> resolve_binary_path) falls back to the built-in Windows/NVIDIA default if this file is missing or malformed, so a bad edit can never brick launch. Pairs with the platform-layer seam; see the cross-platform section of the project design notes.",
+
+  "os_binary_suffix": {
+    "_comment": "Executable filename suffix per OS, appended to a backend's 'binary' base name. Windows needs .exe; POSIX has none. Unlisted OS -> resolver defaults to .exe on Windows, '' elsewhere.",
+    "Windows": ".exe",
+    "Linux": "",
+    "Darwin": ""
+  },
+
+  "backends": {
+    "_comment": "A backend = one llama-server build. 'binary' is the base name (the OS suffix above is appended); 'subdir' is relative to runtime.json -> bin_dir ('' = the bin/ root, which is where v1 ships the flat CUDA build). To add a build: drop its binary in and add a row here + a matrix cell below. 'status' is documentation only (the code never reads it).",
+    "cuda": {
+      "binary": "llama-server",
+      "subdir": "",
+      "label": "NVIDIA CUDA",
+      "status": "shipping",
+      "notes": "The v1 build. Windows + NVIDIA -> bin/llama-server.exe. Linux + NVIDIA reuses it (bin/llama-server) once a Linux CUDA build is dropped in."
+    },
+    "vulkan": {
+      "binary": "llama-server",
+      "subdir": "vulkan",
+      "label": "Vulkan (AMD / Intel)",
+      "status": "planned-v2",
+      "notes": "Cross-vendor GPU offload for AMD + Intel. Not shipped in v1; the subdir keeps it from colliding with the CUDA build."
+    },
+    "metal": {
+      "binary": "llama-server",
+      "subdir": "metal",
+      "label": "Apple Metal",
+      "status": "planned-v2",
+      "notes": "macOS on Apple Silicon. The unified-memory budget path is a separate v2 item (it breaks the VRAM/RAM split model)."
+    },
+    "cpu": {
+      "binary": "llama-server",
+      "subdir": "cpu",
+      "label": "CPU-only",
+      "status": "planned-v2",
+      "notes": "No-GPU fallback build. Not shipped in v1."
+    }
+  },
+
+  "matrix": {
+    "_comment": "OS -> (GPU vendor -> backend id). Vendor strings match platform_layer._vendor_from_name: 'NVIDIA' / 'AMD' / 'Intel' / 'Unknown'. '_default' applies when the probed vendor isn't listed OR when the binary is resolved without a GPU probe (e.g. the Setup doctor, which shouldn't probe just to locate a file). v1 only ever exercises Windows/NVIDIA -> cuda; every other cell is a v2.0 placeholder.",
+    "Windows": { "NVIDIA": "cuda", "AMD": "vulkan", "Intel": "vulkan", "Unknown": "cpu", "_default": "cuda" },
+    "Linux":   { "NVIDIA": "cuda", "AMD": "vulkan", "Intel": "vulkan", "Unknown": "cpu", "_default": "cuda" },
+    "Darwin":  { "_default": "metal" }
+  }
+}
