@@ -2297,6 +2297,15 @@
         if (m.selectable === false) return;  // rerankers shown in RAG section above
         var row = el('div', 'row');
         row.appendChild(el('div', 'rt', '<b>' + esc(m.name) + '</b><span>' + esc(m.path) + '</span>'));
+        // Coaching chips (config/coaching.json, attached by the doctor): quant
+        // (from the filename) + MoE (from GGUF metadata). Hover explains the
+        // speed/quality/VRAM tradeoff.
+        [m.quant, m.moe].forEach(function (c) {
+          if (!c || !c.label) return;
+          var chip = el('span', 'qchip tone-' + (c.tone || 'neutral'), esc(c.label));
+          if (c.tip) chip.title = c.tip;   // .title = plain text, no escaping needed
+          row.appendChild(chip);
+        });
         row.appendChild(el('span', 'stat ok', 'detected'));
         modelHost.appendChild(row);
       });
@@ -3121,6 +3130,7 @@
   (function wireTipTicker() {
     var TIPS = [
       'Memory must be saved manually — say "Add to memory that:" to propose a note for your review. Ayre will not save it otherwise.',
+      'A model\'s quant level (the Q-number in its filename) trades quality for size: Q4 is the balanced default, lower is smaller/faster but can be incoherent, higher is better but heavier. Hover a model in Setup for details.',
     ];
 
     var SPEED_IN  = 90;    // px/s — scroll from right edge to left edge

@@ -1,5 +1,5 @@
 {
-  "_comment": "Runtime launch settings for the llama-server wrapper. Variable-first: host/port/paths/flags live here, never as code literals. Paths are relative to the Ayre-USB root unless absolute.",
+  "_comment": "Runtime launch settings for the llama-server wrapper. Variable-first: host/port/paths/flags live here, never as code literals. Paths are relative to the repo root unless absolute.",
 
   "host": "127.0.0.1",
   "port": 8080,
@@ -48,6 +48,6 @@
 
   "workspace": {
     "path": "ayre_workspace",
-    "rationale": "Sandboxed folder for model-accessible files (read_file tool) and the persistent memory file (memory.md). Relative to the Ayre-USB root. The model cannot access files outside this folder."
+    "rationale": "Sandboxed folder for model-accessible files (read_file tool) and the persistent memory file (memory.md). Relative to the repo root. The model cannot access files outside this folder."
   }
 }

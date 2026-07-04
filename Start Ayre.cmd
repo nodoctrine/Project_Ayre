@@ -38,7 +38,7 @@ echo.
 echo   Could not find Python -- neither bundled (python\python.exe on the drive)
 echo   nor installed on this PC.
 echo.
-echo   A shipped Ayre-USB drive includes its own Python, so this usually means a
+echo   A shipped Ayre USB drive includes its own Python, so this usually means a
 echo   file was left out during USB prep -- see USB_PREP.md. To run from source
 echo   instead, install Python 3 from https://www.python.org/ (tick "Add python.exe
 echo   to PATH"), then double-click this file again.

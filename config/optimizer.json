@@ -68,6 +68,11 @@
     "gpu_overhead_per_1k_ctx_gib": 0.01,
     "gpu_overhead_per_1k_ctx_rationale": "Context-aware component of the CUDA compute/scratch reservation (caveat B4): compute buffers grow with sequence length, so a flat overhead under-reserves at giant context and risks a load-time VRAM OOM (the offline-test mid-generation crash). Reserve this many GiB per 1024 tokens of context on top of the base: e.g. +0.16 GiB @16K, +0.32 GiB @32K, ~+2.6 GiB @256K. Conservative seed -- calibrate against measured VRAM (caveats E1/E2). Set 0 for the old flat behavior.",
 
+    "moe": {
+      "split_speed_note": " Note: this is a Mixture-of-Experts model ({n_expert_used} of {n_expert} experts run per token), so CPU-side layers slow it far less than the file size suggests -- a split can still be quite usable.",
+      "split_speed_note_rationale": "Appended to the solver's CPU-split slowness coaching (the Speed-preset degrade warning and the manual GPU-underused warning) when the GGUF reports expert_count > 1. An MoE model only runs a fraction of its weights per token, so dense-model slowness framing over-scares -- the 30B-A3B-on-High-tier offload story the design centers on IS an MoE split. Deliberately NOT applied to disk-spill (over_budget) messaging: spilled expert weights rotate unpredictably across tokens, so disk-thrash stays as bad as the gate says regardless of sparsity. Placeholders: {n_expert}, {n_expert_used}."
+    },
+
     "manual_override": {
       "cpu_bound_warn_pct": 60,
       "cpu_bound_warn_rationale": "When the user MANUALLY pins n_gpu_layers below what would fit at their context, warn that the GPU is underused (CPU-bound, slower decode) only if the resulting GPU-resident fraction is below this %. Above it, leaving a couple of layers on the CPU is a reasonable safety margin, not a mistake -- no warning. Only fires when the user left GPU-fittable headroom on the table (if that's all that fits, it's the machine, not the choice, and the fit/preset path already covers it). Tune to trade warning noise vs coaching."

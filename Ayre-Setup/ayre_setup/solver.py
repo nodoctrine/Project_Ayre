@@ -129,6 +129,17 @@ def solve(
     weights_per_layer = model_bytes / n_layers
     per_token_kv = mi.per_token_kv_bytes_fp16
 
+    # MoE: only a fraction of the weights run per token, so CPU-split slowness
+    # coaching over-scares if framed dense (config: solver.moe). Memory math is
+    # untouched -- ALL experts must still be resident, and disk spill still
+    # thrashes (spilled experts rotate unpredictably), so over_budget/gate
+    # messaging stays as-is.
+    is_moe = int(getattr(mi, "n_expert", 0) or 0) > 1
+    moe_note = ""
+    if is_moe:
+        moe_note = sv.get("moe", {}).get("split_speed_note", "").format(
+            n_expert=mi.n_expert, n_expert_used=mi.n_expert_used)
+
     # Resolve the active preset (user-selectable policy: context cap + offload goal).
     preset_name = (preset or sv.get("active_preset") or "max_context").lower()
     presets = sv.get("presets", {})
@@ -272,7 +283,7 @@ def solve(
                     f"GPU underused: only {n_gpu}/{n_layers} layers ({pct_now}%) are on GPU "
                     f"though up to {fit_gpu_max} would fit at {ctx} context -- the CPU is "
                     "doing most of the decode (slower). Raise n_gpu_layers toward "
-                    f"{fit_gpu_max} for more speed.")
+                    f"{fit_gpu_max} for more speed." + moe_note)
     else:
         chosen = _search(offload_goal)
         if chosen is None and offload_goal == "full_gpu":
@@ -321,6 +332,12 @@ def solve(
         "verdict": _verdict_reason(verdict, n_gpu, n_layers, _gib(disk_spill),
                                    manual=manual, limit=limit),
     }
+    if is_moe:
+        rationale["moe"] = (
+            f"Mixture-of-Experts: {mi.n_expert} experts, {mi.n_expert_used} active per "
+            "token. All experts must be memory-resident (the file-size footprint above "
+            "is real), but each token only computes a fraction of the weights -- so "
+            "CPU-side layers cost far less throughput than a dense model this size.")
     if manual:
         overridden = []
         overridden.append("context set" if manual_context is not None else "context from preset")
@@ -335,7 +352,7 @@ def solve(
             f"Speed preset: the whole model won't fit in VRAM even at the floor context "
             f"({floor}), so {n_gpu}/{n_layers} layers are on GPU and the rest on CPU (a "
             "split, like Balanced) -- full-GPU throughput isn't achievable here. For "
-            "full-GPU speed, use a smaller or lower-quant model.")
+            "full-GPU speed, use a smaller or lower-quant model." + moe_note)
 
     if verdict == "over_budget" and not manual:
         # Manual over-budget already carries its own precise VRAM/RAM warning above.

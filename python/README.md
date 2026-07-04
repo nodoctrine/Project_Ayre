@@ -12,11 +12,11 @@ engine, it ships as a zip on the **GitHub Releases** page, not in git.
    **not** Explorer's "Extract All" (which nests everything in a wrapper subfolder):
 
    ```powershell
-   Expand-Archive .\python-win64.zip -DestinationPath .\Ayre-USB\python
+   Expand-Archive .\python-win64.zip -DestinationPath .\python
    ```
 
    `python.exe` should end up directly in this folder, and `python3XX._pth` must list
-   `..\Ayre-UI` and `..\Ayre-Setup` (see `Ayre-USB/USB_PREP.md` step 3).
+   `..\Ayre-UI` and `..\Ayre-Setup` (see `USB_PREP.md` step 3).
 
 The launcher (`Start Ayre.cmd`) prefers `python\python.exe`, then a system `python`,
 then `py`. Everything here except this README is gitignored.

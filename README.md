@@ -31,6 +31,36 @@ PC — behind a simple browser UI, and it auto-tunes itself to your GPU.
   Reasonable starting points: **Qwen3-8B Q4** (8 GB cards) or
   **Qwen3-30B-A3B Q4** (16 GB cards).
 
+## Choosing a model — quantization
+
+The **Q-number** in a GGUF filename (e.g. `…-Q4_K_M.gguf`) is its *quantization
+level* — how much the model's weights were compressed. It's the single biggest
+lever on the speed / quality / memory tradeoff, so it's worth understanding before
+you download a 5 GB file. Ayre also shows a colored quant chip next to each model in
+**Setup** — hover it for the same guidance in-app.
+
+| Quant | Size / speed / VRAM | Quality | When to use |
+|-------|--------------------|---------|-------------|
+| **Q2** | smallest, fastest, lightest | can be incoherent | last resort when nothing larger fits |
+| **Q3** | small, fast | noticeably compressed | simple tasks on tight hardware |
+| **Q4** | balanced | close to the big quants | **the recommended default — start here** |
+| **Q5** | larger, a bit slower | better than Q4 | if it fits with headroom |
+| **Q6** | large, heavier | near-full | only with VRAM to spare |
+| **Q8** | very large, slow | ~full precision | rarely needed for local chat |
+| **F16 / BF16** | largest | uncompressed original | almost never the right pick for inference |
+
+An **`IQ`** prefix (e.g. `IQ4_XS`) is an *imatrix* build — a smarter compression that
+fits a little more quality into the same size, sometimes slightly slower on older GPUs.
+
+**Rule of thumb:** on an 8 GB card, a **Q4** 8B model is the safe starting point; on
+16 GB you can run a larger model or a higher quant. If answers feel vague or garbled,
+your quant is probably too low for that model.
+
+<!-- TODO(you): this section is accurate first-draft scaffolding. Rewrite the prose in
+     your voice and trim the table if it's more than testers need. The same content
+     lives in config/coaching.json (which drives the in-app chip + tooltip) — if you
+     change the guidance, update both so they don't drift. -->
+
 ## Quick start
 
 1. Clone this repo.

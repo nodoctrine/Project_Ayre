@@ -32,10 +32,14 @@ from .config import (
     NoModelError,
     config_dir,
     discover_chat_models,
+    load_coaching,
     load_rerankers,
     models_dir,
+    moe_coaching_for,
+    quant_coaching_for,
     reranker_items,
 )
+from .gguf import GGUFError, read_model_info
 
 
 ADD_MODEL_HINT = (
@@ -49,7 +53,7 @@ REQUIRED_MISSING_HINT = (
     "The engine + config must be present to run anything. The llama-server binary "
     "(+CUDA DLLs) is too large for git and ships on the Ayre Releases page; config "
     "comes with the git clone. If you cloned from GitHub, grab the binary assets "
-    "from the Release and see Ayre-USB/USB_PREP.md. If this is a USB drive, it may "
+    "from the Release and see USB_PREP.md. If this is a USB drive, it may "
     "be incompletely assembled. (Setup never downloads anything.)"
 )
 
@@ -133,10 +137,25 @@ class DoctorReport:
             if (models_dir() / filename).exists()
         ]
 
-        chat_models = [
-            {"name": p.name, "path": str(p), "selectable": True}
-            for p in self.models
-        ]
+        # Attach the coaching chips (config/coaching.json) so the Setup view can
+        # flag each model's tradeoffs: `quant` from the filename, `moe` from the
+        # GGUF metadata (a header-only read -- fast, and this method only runs
+        # for /api/doctor, not the 8s /api/system poll). Either key is omitted
+        # when it doesn't apply / can't be read -- the UI simply shows no chip.
+        coaching = load_coaching()
+        chat_models = []
+        for p in self.models:
+            entry = {"name": p.name, "path": str(p), "selectable": True}
+            quant = quant_coaching_for(p.name, coaching)
+            if quant:
+                entry["quant"] = quant
+            try:
+                moe = moe_coaching_for(read_model_info(p), coaching)
+            except (GGUFError, OSError):
+                moe = None                 # unreadable GGUF -> just no chip
+            if moe:
+                entry["moe"] = moe
+            chat_models.append(entry)
 
         return {
             "required": [s.to_dict() for s in self.required],

@@ -13,7 +13,7 @@ not in git — it's large, platform-specific, and regenerable.
    launcher can't find:
 
    ```powershell
-   Expand-Archive .\llama-server-win-cuda.zip -DestinationPath .\Ayre-USB\bin
+   Expand-Archive .\llama-server-win-cuda.zip -DestinationPath .\bin
    ```
 
 `llama-server.exe` should end up directly in this folder. Everything here except this

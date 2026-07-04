@@ -195,13 +195,16 @@
               </div>
             </aside>
           </div>
-        </div>
-        <!-- Tip ticker: scrolls across the bottom of the chat view; hangs briefly
-             when each new tip's start reaches the left edge. Tips list in app.js. -->
-        <div class="tip-ticker" id="tipTicker">
-          <span class="tip-label">TIP</span>
-          <div class="tip-track" id="tipTrack">
-            <span class="tip-text" id="tipText"></span>
+          <!-- Tip ticker: scrolls across the bottom of the chat view; hangs briefly
+               when each new tip's start reaches the left edge. Tips list in app.js.
+               Must live INSIDE .chat (a flex column) so it renders as a bottom
+               strip -- as a sibling of .chat it collapses to an invisible vertical
+               sliver, since #view-chat is a flex ROW. -->
+          <div class="tip-ticker" id="tipTicker">
+            <span class="tip-label">TIP</span>
+            <div class="tip-track" id="tipTrack">
+              <span class="tip-text" id="tipText"></span>
+            </div>
           </div>
         </div>
       </section>

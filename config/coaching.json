@@ -1,0 +1,95 @@
+{
+  "_comment": "User-facing coaching copy (variable-first). Ayre reads this to explain the speed / quality / hardware tradeoffs of the GGUF models a user supplies. This is CONTENT, not tuning knobs: the app author owns the voice. Every prose field has a sibling `*_todo` (or a `_todo` in a list item) describing what to rewrite -- the first-draft text is accurate scaffolding, meant to be replaced in your own words (user-authors-app-content). The STRUCTURE (keys, tier ids, tones) is stable; the doctor matches a model's filename to a quant tier (and its GGUF metadata to the MoE note) and surfaces `label` + `tip`. Tones: caution | balanced | quality | info | neutral (drive the chip colour).",
+
+  "moe": {
+    "label": "MoE",
+    "tone": "info",
+    "tip": "A Mixture-of-Experts model: it stores many small expert networks but runs only {n_expert_used} of its {n_expert} experts per token. The whole file must still fit in memory, but because each reply only computes a fraction of the weights, layers kept on the CPU slow it far less than a normal (dense) model this size.",
+    "tip_todo": "Shown on the MoE chip's hover in Setup, detected from the model's GGUF metadata (not the filename). Placeholders {n_expert}/{n_expert_used} are filled with the model's real counts. Rewrite in your voice; keep the two facts: full size must fit in memory, but CPU offload hurts much less than it would on a dense model."
+  },
+
+  "quant": {
+    "intro": "Quantization is how much the model's weights have been compressed to save memory. Lower numbers (Q2, Q3) make a smaller, faster file that needs less VRAM -- but compress too far and answers get vague or incoherent. Higher numbers (Q6, Q8) keep more of the original quality at the cost of size, memory, and speed. Q4 is the usual sweet spot.",
+    "intro_todo": "Rewrite in your voice. Keep it to 2-3 plain-language sentences a non-technical tester understands: smaller file = faster and lighter on memory, but too small = worse answers; middle (Q4) is the safe default.",
+
+    "recommend_id": "q4",
+    "recommend_todo": "This is the tier Ayre points people at by default. Change the id if you'd rather steer testers to a different balance.",
+
+    "imatrix_note": " This is an 'IQ' (imatrix) build -- it squeezes a bit more quality into the same size than a plain Q of the same number, though it can run slightly slower on some GPUs.",
+    "imatrix_note_todo": "Optional aside appended to the tooltip when the filename is an IQ*/imatrix quant. Trim or reword; blank it out to drop the note.",
+
+    "unknown": {
+      "label": "Quant unknown",
+      "tone": "neutral",
+      "tip": "Couldn't read the quantization level from this file's name. If it's a very small quant it may run fast but answer poorly; a larger one will be heavier but better.",
+      "_todo": "Shown when the filename has no recognizable Q-level (or a name Ayre doesn't parse). Keep it non-alarming -- absence of a label isn't a problem."
+    },
+
+    "tiers": [
+      {
+        "id": "q2",
+        "match_digits": [1, 2],
+        "label": "Q2 · smallest",
+        "tone": "caution",
+        "tip": "Smallest and fastest, lightest on VRAM -- but heavily compressed. Expect noticeably weaker answers and, on some models, outright incoherent output. Use only when nothing larger fits your hardware.",
+        "detail": "The most aggressive common quantization. Great when VRAM is very tight, but the quality drop is real and model-dependent -- some Q2 builds produce garbled text. Try a Q4 first if it fits.",
+        "_todo": "This is the 'gibberish risk' tier (the Q2 gemma story). Make the caution honest but not scary -- it works, it's just the last resort."
+      },
+      {
+        "id": "q3",
+        "match_digits": [3],
+        "label": "Q3 · small",
+        "tone": "caution",
+        "tip": "Small and fast with a modest memory footprint, but quality starts to slip. Fine for simple tasks; step up to Q4 if answers feel thin.",
+        "detail": "A step above Q2 -- usable for straightforward chat and light coding, but you'll feel the compression on harder prompts.",
+        "_todo": "Reword to your taste. The message: acceptable, not ideal."
+      },
+      {
+        "id": "q4",
+        "match_digits": [4],
+        "label": "Q4 · balanced",
+        "tone": "balanced",
+        "tip": "The recommended balance for most people: good answers, reasonable size, and it fits the widest range of hardware. Start here.",
+        "detail": "The default most model builders publish and most users run. Quality is close to the larger quants for a fraction of the memory. If you're not sure what to grab, grab Q4.",
+        "_todo": "Your 'safe default' pitch. This is the one Ayre nudges testers toward."
+      },
+      {
+        "id": "q5",
+        "match_digits": [5],
+        "label": "Q5 · high quality",
+        "tone": "quality",
+        "tip": "Better answers than Q4 at the cost of more VRAM and a little speed. Worth it if it still fits comfortably.",
+        "detail": "A quality bump over Q4 that most GPUs with headroom can afford. Diminishing returns begin here.",
+        "_todo": "Reword. Message: nicer than Q4 if you have the memory to spare."
+      },
+      {
+        "id": "q6",
+        "match_digits": [6, 7],
+        "label": "Q6 · near-full",
+        "tone": "quality",
+        "tip": "Very close to the model's full quality, but large and heavier on memory and speed. Choose it only if you have VRAM to burn.",
+        "detail": "Near-lossless for most purposes. The gains over Q5 are small; the size and speed cost is not.",
+        "_todo": "Reword. Message: excellent quality, only if the hardware allows."
+      },
+      {
+        "id": "q8",
+        "match_digits": [8],
+        "label": "Q8 · very high",
+        "tone": "quality",
+        "tip": "Almost indistinguishable from full precision -- and large, slow, and VRAM-hungry. Overkill unless you specifically need it.",
+        "detail": "The largest of the common integer quants. Quality is essentially maxed; you're paying a lot of memory for a difference most tasks won't notice.",
+        "_todo": "Reword. Message: top quality, rarely necessary, expensive to run."
+      },
+      {
+        "id": "full",
+        "match_digits": [],
+        "label": "Full precision",
+        "tone": "quality",
+        "tip": "Uncompressed (F16/BF16) -- the original weights. Largest and slowest, needs the most memory, and rarely worth it over Q8 for local chat.",
+        "detail": "No quantization at all. Mostly used for fine-tuning or conversion, not everyday inference -- a quantized build gives near-identical answers for a fraction of the resources.",
+        "_todo": "Reword. Message: the raw model; almost never the right pick for running locally."
+      }
+    ],
+    "tiers_todo": "Ordered coarse tiers keyed by the number in the filename (match_digits maps e.g. Q7 -> the q6 tier). Add/split tiers freely; the matcher just needs each tier's digit(s) covered. Leave `full` last -- it catches F16/BF16/F32."
+  }
+}

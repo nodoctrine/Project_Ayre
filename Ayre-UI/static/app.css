@@ -199,6 +199,19 @@ section.view.active { display:flex; }
 .stat.degr { color:var(--amber); border-color:color-mix(in srgb,var(--amber) 45%,transparent); background:color-mix(in srgb,var(--amber) 8%,transparent); }
 .stat.wait { color:var(--ink-faint); border-color:var(--line-soft); }
 
+/* Coaching chips on Setup's chat-model rows (config/coaching.json): quant tier
+   + MoE. A pill like .stat, tone-coloured to hint the model's tradeoffs; the
+   hover title carries the full explanation. caution=amber, balanced (the
+   recommended default) = green, quality/info = cool neutral, unknown = faint. */
+.qchip { font-family:var(--mono); font-size:10px; letter-spacing:0.05em;
+  padding:3px 9px; border-radius:var(--pill-radius); border:1px solid;
+  white-space:nowrap; align-self:center; cursor:help; }
+.qchip.tone-caution  { color:var(--amber); border-color:color-mix(in srgb,var(--amber) 45%,transparent); background:color-mix(in srgb,var(--amber) 8%,transparent); }
+.qchip.tone-balanced { color:var(--green); border-color:color-mix(in srgb,var(--green) 45%,transparent); background:color-mix(in srgb,var(--green) 8%,transparent); }
+.qchip.tone-quality,
+.qchip.tone-info     { color:var(--ink-dim); border-color:var(--line); background:color-mix(in srgb,var(--ink-dim) 8%,transparent); }
+.qchip.tone-neutral  { color:var(--ink-faint); border-color:var(--line-soft); }
+
 /* non-blocking info note (softer than the amber-left .hint) */
 .note { font-family:var(--mono); font-size:11.5px; line-height:1.6; color:var(--ink-dim);
   white-space:pre-wrap; border:1px solid var(--line-soft); border-radius:var(--radius); padding:12px 14px; margin-top:14px; }

@@ -47,7 +47,13 @@ class ModelInfo:
     n_embd: int
     n_ctx_train: int
     per_token_kv_bytes_fp16: int       # KV bytes/token @ FP16, across all layers
+    n_expert: int = 0                  # MoE: total experts (0/1 = dense)
+    n_expert_used: int = 0             # MoE: experts active per token
     source: str = "gguf"
+
+    @property
+    def is_moe(self) -> bool:
+        return self.n_expert > 1
 
     def to_dict(self) -> dict:
         return {
@@ -55,6 +61,8 @@ class ModelInfo:
             "n_head_kv": self.n_head_kv, "head_dim": self.head_dim,
             "n_embd": self.n_embd, "n_ctx_train": self.n_ctx_train,
             "per_token_kv_bytes_fp16": self.per_token_kv_bytes_fp16,
+            "n_expert": self.n_expert, "n_expert_used": self.n_expert_used,
+            "is_moe": self.is_moe,
             "source": self.source,
         }
 
@@ -123,15 +131,19 @@ def read_metadata(path: Path) -> dict:
 def _have_required(meta: dict) -> bool:
     """All shape keys present? Includes the attention-shape keys (head_count_kv,
     key_length) so stop-early never fires BEFORE them -- otherwise KV math falls
-    back to wrong MHA/derived defaults. A model that legitimately omits an
-    optional key simply never stops early and gets parsed in full (still correct).
+    back to wrong MHA/derived defaults. Same lesson for the MoE keys
+    (expert_count, expert_used_count): stopping before them would silently
+    classify an MoE model as dense. A model that legitimately omits an optional
+    key (e.g. any dense model, which has no expert keys) simply never stops
+    early and gets parsed in full (still correct, just a full header scan).
     """
     arch = meta.get("general.architecture")
     if not arch:
         return False
     needed = (f"{arch}.block_count", f"{arch}.embedding_length",
               f"{arch}.context_length", f"{arch}.attention.head_count",
-              f"{arch}.attention.head_count_kv", f"{arch}.attention.key_length")
+              f"{arch}.attention.head_count_kv", f"{arch}.attention.key_length",
+              f"{arch}.expert_count", f"{arch}.expert_used_count")
     return all(k in meta for k in needed)
 
 
@@ -155,6 +167,12 @@ def read_model_info(path: Path) -> ModelInfo:
     n_head_kv = int(meta.get(f"{arch}.attention.head_count_kv", n_head))
     # Explicit key length wins; otherwise derive from embedding / heads.
     head_dim = int(meta.get(f"{arch}.attention.key_length", n_embd // n_head if n_head else 0))
+    # MoE shape: absent on dense models (0 = dense). Only a fraction of the
+    # weights (the used experts + shared tensors) are ACTIVE per token, so
+    # CPU-side layers cost far less than the file size suggests -- the solver
+    # softens its split-slowness coaching on this.
+    n_expert = int(meta.get(f"{arch}.expert_count", 0))
+    n_expert_used = int(meta.get(f"{arch}.expert_used_count", 0))
 
     per_token_kv = n_layers * n_head_kv * head_dim * 2 * 2  # (K+V) x fp16 bytes
 
@@ -162,4 +180,5 @@ def read_model_info(path: Path) -> ModelInfo:
         arch=arch, n_layers=n_layers, n_head=n_head, n_head_kv=n_head_kv,
         head_dim=head_dim, n_embd=n_embd, n_ctx_train=n_ctx_train,
         per_token_kv_bytes_fp16=per_token_kv,
+        n_expert=n_expert, n_expert_used=n_expert_used,
     )

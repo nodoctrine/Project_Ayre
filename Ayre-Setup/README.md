@@ -56,8 +56,8 @@ Run from this directory (so the `ayre_setup` package is importable):
 
 ## What it needs to actually launch
 
-- `llama-server(.exe)` placed at `<Ayre-USB>/bin/` (see `runtime.json -> bin_dir`).
-- Any non-reranker `.gguf` placed in `<Ayre-USB>/models/` — auto-discovered (no
+- `llama-server(.exe)` placed at `bin/` (see `runtime.json -> bin_dir`).
+- Any non-reranker `.gguf` placed in `models/` — auto-discovered (no
   manifest); rerankers are identified via `config/rerankers.json`.
 
 `AYRE_USB_ROOT` env var overrides root detection (the USB may mount anywhere).

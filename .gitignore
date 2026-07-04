@@ -1,6 +1,5 @@
-# .gitignore for the PUBLIC repo (Ayre-Public).
-# The public repo's root == the contents of Ayre-USB/, so these rules drop the
-# Ayre-USB/ prefix used by the private repo's .gitignore.
+# .gitignore for the PUBLIC repo (nodoctrine/Project_Ayre).
+# This is the shippable app's own repo; all rules are relative to its root.
 
 # --- Machine-local / personal (never commit) ---
 .claude/

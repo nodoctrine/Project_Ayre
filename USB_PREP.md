@@ -1,4 +1,4 @@
-# USB Prep — assembling a shippable Ayre-USB drive
+# USB Prep — assembling a shippable Ayre USB drive
 
 Audience: the **USB preparer** — someone with internet who clones this repo, adds
 the large binary files, then copies the result onto a USB drive to ship to an
@@ -14,7 +14,7 @@ The git repo and the USB drive are different containers:
   Python runtime is a platform-specific blob; all are deliberately `.gitignore`d and
   the required ones ship via the GitHub Releases page instead.
 - **The USB drive** holds *everything* — it's a plain file copy of the populated
-  `Ayre-USB/` folder, so it runs fully offline on the destination with no
+  cloned repo folder, so it runs fully offline on the destination with no
   internet, no git, and no fetching.
 
 > **Required vs. bundled vs. the chat model (three-tier doctor).** Only the
@@ -27,7 +27,7 @@ The git repo and the USB drive are different containers:
 > convenience, not a requirement, and the user can swap in any GGUF.
 
 This guide is the bridge: it tells you which large files to acquire and where to
-put them so that `Ayre-USB/` becomes a complete, offline-ready kit before you
+put them so that the repo folder becomes a complete, offline-ready kit before you
 copy it to the stick.
 
 > The destination machine never needs internet. All network access happens here,
@@ -47,12 +47,12 @@ which reads:
 
 | Artifact | Required? | Goes in | Filename | Source of truth |
 |----------|-----------|---------|----------|-----------------|
-| llama.cpp server (CUDA build) + CUDA runtime DLLs | **required** | `Ayre-USB/bin/` | `llama-server.exe` (+ its `.dll`s) | hardcoded (platform layer) |
-| Python runtime (Windows embeddable package, 64-bit) | **required (Windows)** | `Ayre-USB/python/` | `python.exe` (+ stdlib zip, `.pyd`s, `.dll`s) | launcher (`Start Ayre.cmd`) |
-| Reranker — High/Ultra/Max | bundled (non-blocking) | `Ayre-USB/models/` | `bge-reranker-v2-m3.gguf` | `config/rerankers.json` `file` field |
-| Reranker — Low/Mid | bundled (non-blocking) | `Ayre-USB/models/` | `bge-reranker-base.gguf` | `config/rerankers.json` `file` field |
-| Chat model — High/Ultra recommended | optional | `Ayre-USB/models/` | any name (a Qwen3-30B-A3B Q4_K_M `.gguf`) | auto-discovered |
-| Chat model — Mid recommended | optional | `Ayre-USB/models/` | any name (a Qwen3-8B Q4_K_M `.gguf`) | auto-discovered |
+| llama.cpp server (CUDA build) + CUDA runtime DLLs | **required** | `bin/` | `llama-server.exe` (+ its `.dll`s) | hardcoded (platform layer) |
+| Python runtime (Windows embeddable package, 64-bit) | **required (Windows)** | `python/` | `python.exe` (+ stdlib zip, `.pyd`s, `.dll`s) | launcher (`Start Ayre.cmd`) |
+| Reranker — High/Ultra/Max | bundled (non-blocking) | `models/` | `bge-reranker-v2-m3.gguf` | `config/rerankers.json` `file` field |
+| Reranker — Low/Mid | bundled (non-blocking) | `models/` | `bge-reranker-base.gguf` | `config/rerankers.json` `file` field |
+| Chat model — High/Ultra recommended | optional | `models/` | any name (a Qwen3-30B-A3B Q4_K_M `.gguf`) | auto-discovered |
+| Chat model — Mid recommended | optional | `models/` | any name (a Qwen3-8B Q4_K_M `.gguf`) | auto-discovered |
 
 Reranker filenames **must match `config/rerankers.json`** (either name your download
 to match, or edit the `file` field there) — that registry is how Ayre tells a
@@ -86,31 +86,31 @@ dominates everything after that:
 ### 1. Get the repo
 ```
 git clone <repo-url>
-cd <repo>/Ayre-USB
+cd Project_Ayre
 ```
 At this point `bin/` does not exist yet and `models/` contains only
 `.gitignore`. That's expected.
 
-### 2. Acquire `llama-server` → `Ayre-USB/bin/`
+### 2. Acquire `llama-server` → `bin/`
 Download a **prebuilt Windows CUDA build** from the official llama.cpp releases
 (github.com/ggml-org/llama.cpp → Releases). You need both:
 - the main build zip (contains `llama-server.exe` and its DLLs), and
 - the matching **CUDA runtime** (`cudart`) zip for that release.
 
-Extract **all** the `.exe` and `.dll` files into `Ayre-USB/bin/`. (The CUDA build
+Extract **all** the `.exe` and `.dll` files into `bin/`. (The CUDA build
 won't start without the cudart DLLs alongside the exe.)
 
 > Pin the exact release/CUDA version you ship and record it — see "Recording what
 > you shipped" below. Match the CUDA build to the GPUs you expect at the
 > destination.
 
-### 3. Acquire the bundled Python runtime → `Ayre-USB/python/` (Windows)
+### 3. Acquire the bundled Python runtime → `python/` (Windows)
 The destination PC may not have Python. Ayre is **stdlib-only** (no pip packages,
 no venv), so the official **Windows embeddable package** runs it as-is.
 
 1. From python.org's downloads, grab **"Windows embeddable package (64-bit)"** for a
    recent 3.x (e.g. 3.12 or 3.13). It's a ~10 MB zip.
-2. Unzip it into `Ayre-USB/python/` so you end up with `Ayre-USB/python/python.exe`.
+2. Unzip it into `python/` so you end up with `python/python.exe`.
 3. In that folder, open `python3XX._pth` (e.g. `python312._pth`) and add **two**
    path lines so both the launcher and the standalone doctor resolve their packages
    under the embeddable runtime (which sets `sys.path` from this file and does *not*
@@ -134,7 +134,7 @@ and only falls back to a system Python on a developer machine.
 > Pin the exact Python version you ship and record it (see "Recording what you
 > shipped"). The embeddable package is 64-bit; match it to a 64-bit destination.
 
-### 4. (Optional) Acquire chat model GGUFs → `Ayre-USB/models/`
+### 4. (Optional) Acquire chat model GGUFs → `models/`
 Download the Qwen3 GGUFs (Hugging Face hosts official + community `Q4_K_M`
 quantizations) and place them in `models/`. **Chat models keep whatever filename
 they ship with** — Ayre auto-discovers any non-reranker `.gguf`, so no renaming is
@@ -146,7 +146,7 @@ models/Qwen3-8B-Q4_K_M.gguf
 (Just don't give a chat model the same name as a registered reranker, or it'll be
 treated as the reranker and hidden from the chat-model list.)
 
-### 5. Acquire the reranker GGUFs → `Ayre-USB/models/`
+### 5. Acquire the reranker GGUFs → `models/`
 Download the BGE reranker GGUFs from Hugging Face and place them in `models/`
 matching the filenames registered in `config/rerankers.json`
 (`bge-reranker-v2-m3.gguf`, `bge-reranker-base.gguf`). These names matter — the
@@ -165,7 +165,7 @@ Compare against the source's published checksum where available. (A future
 integrity check can be automated — see the plan's provisioning discussion.)
 
 ### 7. Verify the kit assembles correctly (before copying)
-From `Ayre-USB/Ayre-Setup/`, run the three-tier doctor — it lists the REQUIRED
+From `Ayre-Setup/`, run the three-tier doctor — it lists the REQUIRED
 artifacts (and fails the kit if any are missing), notes the non-blocking
 rerankers, and separately reports any detected chat model:
 ```
@@ -188,13 +188,13 @@ python -m ayre_setup.cli start
 it loads. See "Seed the layer split" below.)
 
 ### 8. Assemble the USB
-The USB's contents = the **populated `Ayre-USB/` folder**. Copy it to the drive,
+The USB's contents = the **populated repo folder**. Copy it to the drive,
 excluding dev-only cruft:
 ```
-# PowerShell — copy Ayre-USB/ to drive E:\ , skipping git + python caches
-robocopy . E:\Ayre-USB /E /XD .git __pycache__
+# PowerShell — copy the repo folder to drive E:\ , skipping git + python caches
+robocopy . E:\Ayre /E /XD .git __pycache__
 ```
-Run that from inside `Ayre-USB/`. The drive then holds `Ayre-Setup/`, `config/`,
+Run that from inside the repo folder. The drive then holds `Ayre-Setup/`, `config/`,
 `models/` (with the GGUFs), `bin/` (with the exe + DLLs), etc. — a complete kit.
 
 ### 9. Offline smoke test (the honest check)

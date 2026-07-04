@@ -9,6 +9,7 @@ output that carries its own rationale (document-tier-reasoning rule).
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -42,6 +43,88 @@ def load_runtime() -> dict:
 
 def load_optimizer() -> dict:
     return _load_json(config_dir() / "optimizer.json")
+
+
+def load_coaching() -> dict:
+    """User-facing coaching copy (config/coaching.json): quant tradeoffs today,
+    room for more surfaces later. Optional -- a missing or unparseable file just
+    disables coaching, it never blocks a launch or the doctor."""
+    try:
+        return _load_json(config_dir() / "coaching.json")
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def quant_coaching_for(name: str, coaching: dict | None = None) -> dict | None:
+    """Match a GGUF filename to a quant coaching tier (coaching.json ->
+    quant.tiers) and return {id, label, tone, tip} for the UI, or None when
+    coaching is absent or the filename has no recognizable quant marker.
+
+    Detection is filename-based on purpose: the Q-level people write in the name
+    (Q4_K_M, IQ3_XS, f16, ...) is exactly what they recognize and shop for, and
+    it needs no GGUF parse. `I?Q<digit>` -> the tier whose match_digits covers
+    <digit>; F16/BF16/F32 (no integer quant) -> the `full` tier; an IQ*/imatrix
+    build appends the shared imatrix note. Content lives in config; only the
+    parsing lives here (mirrors gguf.py: code parses, config supplies copy)."""
+    coaching = coaching if coaching is not None else load_coaching()
+    quant = (coaching or {}).get("quant") or {}
+    tiers = quant.get("tiers") or []
+    if not tiers:
+        return None
+
+    upper = name.upper()
+
+    def as_result(tier: dict, imatrix: bool = False) -> dict:
+        tip = tier.get("tip", "")
+        note = quant.get("imatrix_note")
+        if imatrix and note:
+            tip = (tip + note).rstrip()
+        return {"id": tier.get("id"), "label": tier.get("label"),
+                "tone": tier.get("tone", "neutral"), "tip": tip}
+
+    def unknown() -> dict | None:
+        u = quant.get("unknown")
+        if not u:
+            return None
+        return {"id": "unknown", "label": u.get("label"),
+                "tone": u.get("tone", "neutral"), "tip": u.get("tip", "")}
+
+    # Integer quant (Q4_K_M, IQ3_XS, ...) -- the common, specific case first.
+    m = re.search(r"(I?)Q(\d)", upper)
+    if m:
+        digit = int(m.group(2))
+        for tier in tiers:
+            if digit in (tier.get("match_digits") or []):
+                return as_result(tier, imatrix=m.group(1) == "I")
+        return unknown()
+
+    # No integer quant -- full precision weights (F16 / BF16 / F32)?
+    if re.search(r"(?:^|[^A-Z0-9])(?:B?F16|F32)(?:[^A-Z0-9]|$)", upper):
+        for tier in tiers:
+            if tier.get("id") == "full":
+                return as_result(tier)
+
+    return unknown()
+
+
+def moe_coaching_for(model_info, coaching: dict | None = None) -> dict | None:
+    """MoE coaching chip (coaching.json -> moe) for a parsed model: {label, tone,
+    tip} with the model's real expert counts filled in, or None when the model is
+    dense or coaching is absent. Unlike quant (a filename convention), MoE-ness
+    comes from GGUF metadata -- pass a gguf.ModelInfo (or anything carrying
+    n_expert / n_expert_used)."""
+    n_expert = int(getattr(model_info, "n_expert", 0) or 0)
+    if n_expert <= 1:
+        return None
+    coaching = coaching if coaching is not None else load_coaching()
+    moe = (coaching or {}).get("moe") or {}
+    if not moe:
+        return None
+    tip = moe.get("tip", "").format(
+        n_expert=n_expert,
+        n_expert_used=int(getattr(model_info, "n_expert_used", 0) or 0))
+    return {"label": moe.get("label", "MoE"), "tone": moe.get("tone", "info"),
+            "tip": tip}
 
 
 # --- Machine-local user overlay (per-machine, gitignored) -------------------
