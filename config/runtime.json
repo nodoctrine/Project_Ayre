@@ -7,7 +7,9 @@
 
   "ui": {
     "port": 2500,
-    "rationale": "The Ayre-UI shell serves on its own loopback port (open http://localhost:2500), distinct from llama-server's 8080 so the two never collide. Change this value to move the UI port. The bind HOST is intentionally NOT configurable here: it is hard-locked to loopback (127.0.0.1) in code (server.py -> _LOOPBACK_BIND_HOST) so the bridge can never be network-exposed without the gated Remote Access work. See Remote Access in the project design notes."
+    "rationale": "The Ayre-UI shell serves on its own loopback port (open http://localhost:2500), distinct from llama-server's 8080 so the two never collide. Change this value to move the UI port. The bind HOST is intentionally NOT configurable here: it is hard-locked to loopback (127.0.0.1) in code (server.py -> _LOOPBACK_BIND_HOST) so the bridge can never be network-exposed without the gated Remote Access work. See Remote Access in the project design notes.",
+    "instance_probe_timeout_seconds": 0.5,
+    "instance_probe_timeout_seconds_rationale": "Budget (seconds) for the single-instance startup probe: a loopback connect + HEAD to detect an Ayre bridge already serving this port, so a second launch reports 'already running' instead of silently double-binding (server.py -> detect_running_instance). Loopback is instant, so 0.5s is generous; the OS-level exclusive-bind guard is the real guarantee, this only shapes the friendlier message. Raise it only if a heavily-loaded machine misses the running instance."
   },
 
   "fallback_n_gpu_layers": 0,

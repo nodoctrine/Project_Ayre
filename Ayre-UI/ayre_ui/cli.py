@@ -16,7 +16,7 @@ import sys
 import threading
 import webbrowser
 
-from .server import make_server, resolve_ui_address
+from .server import make_server, resolve_ui_address, detect_running_instance
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -29,6 +29,23 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     host, port = resolve_ui_address(args.host, args.port)
+
+    # Single-instance guard: if an Ayre bridge is already serving this port, don't
+    # silently start a second copy (on Windows SO_REUSEADDR would let it double-bind
+    # -- see server.py's single-instance-guard note). Point the user at the running
+    # one instead of leaving a confusing zombie. A non-Ayre program on the port falls
+    # through to make_server, whose exclusive bind raises OSError -> the clean message
+    # below. detect_running_instance never raises.
+    if detect_running_instance(port) == "ayre":
+        display = "localhost" if host in ("127.0.0.1", "0.0.0.0", "::1") else host
+        url = f"http://{display}:{port}/"
+        print(f"Ayre is already running -- open the UI at {url}")
+        print("  A second copy was not started (only one Ayre can use a port at a time).")
+        print("  If that page does not respond, close the other Ayre window (or its")
+        print("  console) and launch again, or start this one on a different port:")
+        print("  - run:  python -m ayre_ui --port 3000      (any 4-digit port)")
+        return 1
+
     try:
         httpd = make_server(host=host, port=port)
     except OSError as exc:

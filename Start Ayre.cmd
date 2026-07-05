@@ -47,6 +47,9 @@ pause
 goto :eof
 
 :ended
-REM Keep the window open if the bridge exited with an error (e.g. the port was
-REM busy) so the message stays readable instead of flashing closed.
+REM Keep the window open if the bridge exited with an error so the message stays
+REM readable instead of flashing closed. This fires for a busy/reserved port AND for
+REM a duplicate launch: Ayre-UI refuses to start a second copy on a port an Ayre
+REM bridge already holds (exit code 1, with an "already running" message) instead of
+REM silently double-binding -- see the single-instance guard in Ayre-UI/ayre_ui/server.py.
 if errorlevel 1 pause
