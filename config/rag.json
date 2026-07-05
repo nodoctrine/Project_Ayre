@@ -7,8 +7,8 @@
   "corpus_label": "Simple English Wikipedia",
   "corpus_label_rationale": "Human-facing name of the active corpus, shown in the RAG library section + stats. v0 = Simple English; at v0.5 this flips to 'English Wikipedia' alongside index_db_path (the pipeline is corpus-agnostic).",
 
-  "index_db_path": "../../Ayre_Corpus/simplewiki.db",
-  "index_db_path_rationale": "The FTS5 index db. Resolved relative to the app root (Project_Ayre/); '../../Ayre_Corpus/' lands beside the Wikipedia dump, OUTSIDE the app tree, and is gitignored (*.db) -- a large generated artifact must never be committed (consume-only; Distribution_Contents 'never-in-repo'). Absolute paths are honored as-is.",
+  "index_db_path": "Ayre_Corpus/simplewiki.db",
+  "index_db_path_rationale": "The FTS5 index db. Resolved relative to the app root (Project_Ayre/), so 'Ayre_Corpus/simplewiki.db' lands at Project_Ayre/Ayre_Corpus/ -- INSIDE the app tree, gitignored via Ayre_Corpus/.gitignore + the root *.db rule, exactly like bin/, python/, and models/*.gguf (large, generated/consume-only, present-but-not-versioned). This travels with the repo wherever it is cloned or USB-copied; the prior '../../Ayre_Corpus/' default was tuned to this dev's nested-repo folder depth and mislanded for a standalone clone (fixed 2026-07-05). Absolute paths are honored as-is; the source dump lives wherever `ingest --dump` points and need not be colocated.",
 
   "chunk_chars": 1200,
   "chunk_chars_rationale": "Target chunk size (~300 tokens): a coherent grounding unit big enough to carry an idea, small enough that ~5 fit a modest injection budget. Paragraph-aligned (chunker never splits mid-paragraph unless a single paragraph exceeds this).",
@@ -25,8 +25,8 @@
   "inject_n": 5,
   "inject_n_rationale": "Max chunks actually injected into context (5 x 1200 chars is roughly 1500 tokens) after the threshold cut. Bounded again by context_fraction so a large context window can't be flooded.",
 
-  "score_threshold": null,
-  "score_threshold_rationale": "ABSOLUTE floor on bm25(). SQLite returns more-negative = better and the raw score is corpus/query-relative, so no portable cutoff exists up front. Ships null = 'inject the top inject_n regardless' so retrieval is OBSERVABLE before tuning; CP1 calibrates a real value (e.g. -2.0) by eyeballing the query CLI's printed scores. Once set, hits with score > threshold are dropped; if nothing clears it, inject nothing.",
+  "score_threshold": -2.0,
+  "score_threshold_rationale": "ABSOLUTE floor on bm25() (more-negative = better; hits with score > threshold are dropped; if nothing clears it, inject nothing). Set to -2.0 in the 2026-07-05 calibration (user decision, post stopword-fix): a pure safety floor, NOT a relevance gate. Measured bands on the Simple English index: every genuine match sits at -12 or deeper; rare body-only mentions (the most valuable grounding for obscure questions) can reach -5 to -10; nothing genuine lives in (-2, 0]. So -2.0 drops only near-zero common-word-overlap noise and can never gate out real grounding. Deeper values (e.g. -12) were rejected: genuine and tangential bands fully overlap, so a deep floor cuts rare single-mention grounding while still passing tangential noise. Relevance beyond this floor is handled upstream (stopword filtering in retrieve.py) and downstream (injection preamble's 'ignore if unhelpful'; v0.5 reranker). Full data: RAG_v0_Build_Plan.md 10, stopword-fix addendum.",
 
   "score_rel_fraction": 0.0,
   "score_rel_fraction_rationale": "Relative trim, 0 = OFF (default). When >0, after the absolute floor keep hit i only if its score magnitude is within this fraction of the top hit's (|score_i| >= |top| * fraction) -- i.e. 'within X% of the best'. Included now (few lines) so CP2/v0.5 can suppress noisy tails without a rebuild.",

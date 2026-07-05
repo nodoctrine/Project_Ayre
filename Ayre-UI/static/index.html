@@ -353,7 +353,7 @@
           </div>
           <div class="sec-body" id="sec-rag" hidden>
             <!-- TODO(you): reword this description in your voice (bones not skin). -->
-            <p class="subnote">BM25 offline search over a local Wikipedia corpus. When on, matched passages are retrieved and injected as background context before each turn — no embeddings, no internet. Build the index once with <code>python -m ayre_rag ingest --dump &lt;dump.xml.bz2&gt;</code>, then turn it on here.</p>
+            <p class="subnote">The offline knowledge corpora Ayre can search — BM25 full-text over a local Wikipedia index, no embeddings, no internet. Build an index once with <code>python -m ayre_rag ingest --dump &lt;dump.xml.bz2&gt;</code>. The master <b>Use retrieval in chat</b> switch lives in <b>Settings → Retrieval</b>.</p>
             <div id="ragPanel" class="rag-panel">
               <div class="muted">Loading…</div>
             </div>
@@ -408,6 +408,13 @@
               <button id="clearMemoryYes" class="memory-confirm-yes danger">Clear it</button>
               <button id="clearMemoryNo" class="memory-confirm-no">Cancel</button>
             </div>
+          </div>
+
+          <div class="sec-head"><h2>Retrieval</h2><span class="rule"></span></div>
+          <!-- TODO(you): reword this description in your voice. -->
+          <p class="subnote">When retrieval is on, Ayre searches your local Wikipedia corpus before each reply and quietly adds the most relevant passages as background context — grounding answers in the corpus, fully offline. Choose which corpus it searches under <b>Workspace → RAG library</b>. <b>Show retrieved context</b> reveals the exact passages injected under each grounded reply.</p>
+          <div id="ragSettings" class="rag-panel">
+            <div class="muted">Loading…</div>
           </div>
 
           <div class="sec-head"><h2>Appearance</h2><span class="rule"></span></div>

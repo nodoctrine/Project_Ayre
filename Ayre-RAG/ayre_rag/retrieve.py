@@ -23,6 +23,33 @@ from .config import RagConfig
 # parsed as syntax. We quote every token anyway, but also drop them as query words
 # (a user typing "cats and dogs" means the animals, not a boolean AND).
 _FTS_OPERATORS = {"and", "or", "not", "near"}
+
+# Conversational filler words carry ~zero retrieval intent, but OR'd into the MATCH
+# and title-weighted x5 they let short pop-culture titles built from filler phrases
+# ("Catch Me If You Can", "Tell Me Why") out-score genuine content matches — the
+# 2026-07-05 calibration bug: "hey can you tell me about photosynthesis" buried the
+# Photosynthesis article below 20 song/movie hits. A small curated set, deliberately
+# a code constant like _FTS_OPERATORS (an engineering detail of query hygiene, not a
+# user tunable). Words with a strong content reading (e.g. "may" the month, "one" the
+# number) are deliberately left OUT — dropping real content beats trimming noise.
+_STOPWORDS = {
+    # articles / copulas
+    "a", "an", "the", "is", "are", "am", "was", "were", "be", "been",
+    # prepositions / connectives
+    "in", "on", "at", "to", "of", "for", "but", "with", "from", "as", "by", "if", "so",
+    # pronouns / determiners
+    "you", "your", "me", "my", "we", "us", "they", "he", "she", "his", "her", "him",
+    "it", "its", "this", "that", "these", "those",
+    # auxiliaries ("don" = the tokenized stem of "don't")
+    "can", "could", "will", "would", "should", "might",
+    "do", "does", "did", "don", "have", "has", "had",
+    # conversational filler / greetings / instruction verbs
+    "hey", "hi", "hello", "please", "thanks", "thank", "just",
+    "tell", "say", "give", "show", "about",
+    # question words
+    "what", "who", "which", "where", "when", "why", "how",
+}
+
 _TOKEN = re.compile(r"\w+", re.UNICODE)
 _MIN_TOKEN_CHARS = 2
 _MAX_TOKENS = 32  # cap the OR-expansion so a pasted wall of text stays a cheap query
@@ -40,14 +67,16 @@ class Hit:
 def sanitize_query(text: str) -> str:
     """Turn a free-text message into a safe FTS5 MATCH expression.
 
-    Lowercase, extract unicode word tokens, drop short tokens + bareword operators,
-    cap the count, then quote each token and OR them together. Quoting means nothing
-    a user types (`*`, `"`, `AND`, `(`) can be parsed as FTS5 syntax -- the query is
-    always a plain OR-of-terms. Returns "" when nothing usable remains."""
+    Lowercase, extract unicode word tokens, drop short tokens + bareword operators +
+    conversational stopwords, cap the count, then quote each token and OR them
+    together. Quoting means nothing a user types (`*`, `"`, `AND`, `(`) can be parsed
+    as FTS5 syntax -- the query is always a plain OR-of-terms. Returns "" when
+    nothing usable remains (an all-filler message retrieves nothing, by design)."""
     seen: set[str] = set()
     tokens: list[str] = []
     for raw in _TOKEN.findall(text.lower()):
-        if len(raw) < _MIN_TOKEN_CHARS or raw in _FTS_OPERATORS or raw in seen:
+        if (len(raw) < _MIN_TOKEN_CHARS or raw in _FTS_OPERATORS
+                or raw in _STOPWORDS or raw in seen):
             continue
         seen.add(raw)
         tokens.append(raw)

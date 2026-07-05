@@ -54,9 +54,10 @@ class RagConfig:
 
     enabled: bool = False
     corpus_label: str = "Simple English Wikipedia"
-    # Resolved relative to the app root; gitignored (large generated artifact that
-    # lives with the dump in Ayre_Corpus, never in the app tree). See resolved_db_path().
-    index_db_path: str = "../../Ayre_Corpus/simplewiki.db"
+    # Resolved relative to the app root -> Project_Ayre/Ayre_Corpus/ (INSIDE the tree,
+    # gitignored like bin/ python/ models/; a large generated artifact that travels with
+    # the repo). Must match config/rag.json's default. See resolved_db_path().
+    index_db_path: str = "Ayre_Corpus/simplewiki.db"
     chunk_chars: int = 1200
     min_chunk_chars: int = 200
     title_weight: float = 5.0

@@ -3066,10 +3066,13 @@
     loadToolPanel();
   })();
 
-  /* ── RAG library panel (Tools view) ── */
-  (function wireRagPanel() {
-    var panel = document.getElementById('ragPanel');
-    if (!panel) return;
+  /* ── RAG: master toggles live in Settings → Retrieval; the corpus list lives in
+       Workspace → RAG library. Both surfaces share /api/rag state and re-render
+       together on any toggle so they never drift. ── */
+  (function wireRag() {
+    var settingsEl = document.getElementById('ragSettings'); // Settings → Retrieval
+    var corpusEl = document.getElementById('ragPanel');      // Workspace → RAG library
+    if (!settingsEl && !corpusEl) return;
 
     function toggleBtn(on) {
       return el('button', 'tool-toggle' + (on ? ' on' : ''), on ? 'on' : 'off');
@@ -3082,62 +3085,93 @@
       }).then(function (r) { return r.json(); });
     }
 
-    function render(st) {
-      panel.innerHTML = '';
+    // Wire a toggle button: POST `key`, then re-render BOTH surfaces on success.
+    function wireToggle(btn, key, current) {
+      btn.addEventListener('click', function () {
+        if (btn.disabled) return;
+        btn.disabled = true;
+        post(key, !current).then(function (d) {
+          if (d.ok) renderAll(d); else btn.disabled = false;
+        }).catch(function () { btn.disabled = false; });
+      });
+    }
+
+    // Settings → Retrieval: the master on/off + the show-context preview toggle.
+    function renderSettings(st) {
+      if (!settingsEl) return;
+      settingsEl.innerHTML = '';
       if (!st || !st.available) {
-        panel.appendChild(textEl('div', 'muted', 'RAG is unavailable on this install.'));
+        settingsEl.appendChild(textEl('div', 'muted', 'Retrieval is unavailable on this install.'));
         return;
       }
-      // Status line: built index → counts; no index → the non-blocking build notice.
+      // Master switch. Disabled (with a hint) until a corpus index exists — turning it
+      // on with no index would just be a silent no-op every turn.
+      var row1 = el('div', 'rag-toggle-row');
+      row1.appendChild(textEl('span', 'rag-toggle-label', 'Use retrieval in chat'));
+      var t1 = toggleBtn(st.enabled);
+      row1.appendChild(t1);
+      settingsEl.appendChild(row1);
+      if (!st.ready) {
+        t1.disabled = true;
+        t1.title = 'Build a corpus index first (Workspace → RAG library)';
+        settingsEl.appendChild(textEl('p', 'subnote',
+          'No corpus index found yet — build one, then turn this on.'));
+      } else {
+        wireToggle(t1, 'enabled', st.enabled);
+      }
+
+      // Show retrieved context (the raw injected passages preview under a reply).
+      var row2 = el('div', 'rag-toggle-row');
+      row2.appendChild(textEl('span', 'rag-toggle-label', 'Show retrieved context under replies'));
+      var t2 = toggleBtn(st.show_retrieved_context);
+      row2.appendChild(t2);
+      settingsEl.appendChild(row2);
+      wireToggle(t2, 'show_retrieved_context', st.show_retrieved_context);
+    }
+
+    // Workspace → RAG library: the corpus/corpora available to search. v0 ships one
+    // corpus; per-corpus selection will render here when a second corpus is added.
+    function renderCorpus(st) {
+      if (!corpusEl) return;
+      corpusEl.innerHTML = '';
+      if (!st || !st.available) {
+        corpusEl.appendChild(textEl('div', 'muted', 'Retrieval is unavailable on this install.'));
+        return;
+      }
       var status = el('div', 'rag-status');
       if (st.ready) {
         var c = (st.chunk_count || 0).toLocaleString('en-US');
         var a = st.article_count ? st.article_count.toLocaleString('en-US') + ' articles · ' : '';
         status.appendChild(textEl('span', 'rag-status-ok', '✓ Index ready'));
-        status.appendChild(textEl('span', 'rag-status-detail', (st.corpus_label || 'Corpus') + ' — ' + a + c + ' passages'));
+        status.appendChild(textEl('span', 'rag-status-detail',
+          (st.corpus_label || 'Corpus') + ' — ' + a + c + ' passages'));
       } else {
         status.appendChild(textEl('span', 'rag-status-none', '○ No index found'));
         status.appendChild(textEl('span', 'rag-status-detail',
           st.error ? ('build one to enable retrieval (' + st.error + ')') : 'build one to enable retrieval'));
       }
-      panel.appendChild(status);
-
-      // Toggle: RAG on/off. Disabled (with a hint) until an index exists — turning it
-      // on with no index would just be a silent no-op every turn.
-      var row1 = el('div', 'rag-toggle-row');
-      row1.appendChild(textEl('span', 'rag-toggle-label', 'Use retrieval in chat'));
-      var t1 = toggleBtn(st.enabled);
-      if (!st.ready) { t1.disabled = true; t1.title = 'Build an index first'; }
-      row1.appendChild(t1);
-      panel.appendChild(row1);
-      t1.addEventListener('click', function () {
-        if (t1.disabled) return;
-        t1.disabled = true;
-        post('enabled', !st.enabled).then(function (d) {
-          if (d.ok) render(d); else t1.disabled = false;
-        }).catch(function () { t1.disabled = false; });
-      });
-
-      // Toggle: show retrieved context (the raw injected passages preview).
-      var row2 = el('div', 'rag-toggle-row');
-      row2.appendChild(textEl('span', 'rag-toggle-label', 'Show retrieved context under replies'));
-      var t2 = toggleBtn(st.show_retrieved_context);
-      row2.appendChild(t2);
-      panel.appendChild(row2);
-      t2.addEventListener('click', function () {
-        t2.disabled = true;
-        post('show_retrieved_context', !st.show_retrieved_context).then(function (d) {
-          if (d.ok) render(d); else t2.disabled = false;
-        }).catch(function () { t2.disabled = false; });
-      });
+      corpusEl.appendChild(status);
+      corpusEl.appendChild(textEl('p', 'subnote',
+        'One corpus ships in this build. Turn retrieval on or off in Settings → Retrieval.'));
     }
 
+    function renderAll(st) { renderSettings(st); renderCorpus(st); }
+
     window.loadRagPanel = function () {
-      panel.innerHTML = '<div class="muted">Loading…</div>';
-      getJSON('/api/rag').then(render).catch(function () {
-        panel.innerHTML = '<div class="muted">Could not load RAG status.</div>';
+      if (corpusEl) corpusEl.innerHTML = '<div class="muted">Loading…</div>';
+      if (settingsEl) settingsEl.innerHTML = '<div class="muted">Loading…</div>';
+      getJSON('/api/rag').then(renderAll).catch(function () {
+        var msg = '<div class="muted">Could not load retrieval status.</div>';
+        if (corpusEl) corpusEl.innerHTML = msg;
+        if (settingsEl) settingsEl.innerHTML = msg;
       });
     };
+
+    // Refresh when the user opens Settings (the Tools view already refreshes via nav).
+    document.addEventListener('ayre:nav', function (e) {
+      if (e.detail && e.detail.view === 'settings') window.loadRagPanel();
+    });
+
     window.loadRagPanel();
   })();
 

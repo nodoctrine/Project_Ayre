@@ -1,0 +1,9 @@
+# RAG corpora live here: the Wikipedia dumps (*.xml.bz2) and the FTS5 indexes
+# (*.db) built from them by `python -m ayre_rag ingest`. All of it is large,
+# generated/downloaded, and consume-only — none of it belongs in git (see
+# Distribution_Contents.md "never-in-repo"). Ignore everything in this folder
+# except this file, which keeps the folder present in the repo so a fresh clone
+# has an obvious, in-tree home to build indexes into (config/rag.json defaults
+# index_db_path here). Mirrors the models/.gitignore pattern for bin/, python/, models/.
+*
+!.gitignore
