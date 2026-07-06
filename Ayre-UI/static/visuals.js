@@ -1,6 +1,17 @@
-/* Ayre-UI visuals — reduced-motion state, favicon, tendrils, context meter,
-   hardware monitor, telemetry, appearance toggles, tip ticker. Split from app.js
-   2026-07-05 (mechanical phase). Reads foundation off window.Ayre. */
+/* Ayre-UI · visuals.js — ambient/rail visuals, motion state, telemetry.
+   Load order: after core.js.  CONSUMES Ayre.{root,esc,el,getJSON,textEl,BRIDGE_DOWN}.
+   EXPOSES on window.Ayre: reduceMotion, faviconCtl, ctxTendrils, ctxMeter, hwMon,
+   setTelemetry  (read lazily by chat.js and setup.js).
+   Contents (in file order; reduceMotion is defined FIRST because favicon/tendrils/
+   meter subscribe to it at construction):
+     - reduceMotion        shared System/On/Off motion state (localStorage; others subscribe)
+     - faviconCtl          live browser-tab status glyph (idle/engine/thinking)
+     - ctxTendrils         ambient tendril field painted behind the chat
+     - ctxMeter            the CHAT (retained) + LIVE (active) context-occupancy bars
+     - Appearance toggles  thinking-visual on/off + Reduce Motion tri-state
+     - hwMon + telemetry   hardware monitor; the poll runs ONLY while the engine is up
+     - tip ticker          rolling tips along the bottom of the chat (motion-gated)
+   Split from app.js 2026-07-05. */
 (function () {
   'use strict';
   var Ayre = window.Ayre;

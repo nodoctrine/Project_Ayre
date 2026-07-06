@@ -1,6 +1,17 @@
-/* Ayre-UI workspace — file manager, projects, tool panel, RAG library, skill
-   builder. Split from app.js 2026-07-05 (mechanical phase). Reads foundation off
-   window.Ayre. */
+/* Ayre-UI · workspace.js — the Workspace / Tools surfaces.
+   Load order: after setup.js.  CONSUMES Ayre.{root,esc,el,getJSON,textEl,BRIDGE_DOWN}.
+   EXPOSES: nothing. Talks to other surfaces only through document events
+   (ayre:project-changed, ayre:tools-changed).
+   Contents:
+     - file manager      workspace file browser (collapsible sections)
+     - tools nav submenu  active-project files listed in the rail
+     - project selector   chat-header project dropdown
+     - project manager    create / rename / delete projects (Tools tab)
+     - tool panel         per-tool enable toggles
+     - RAG library        corpus index status (the master toggles live in Settings)
+     - Skill Builder      author custom skills. SECURITY: the injection gating is
+                          server-side (Devlog #10); this UI only POSTs to /api/skills.
+   Split from app.js 2026-07-05. */
 (function () {
   'use strict';
   var Ayre = window.Ayre;

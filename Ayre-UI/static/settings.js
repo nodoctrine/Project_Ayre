@@ -1,6 +1,16 @@
-/* Ayre-UI settings — UI port, handoff cooldown, memory-warning threshold, clear
-   memory, and the memory chip + proposed-memory review. Split from app.js
-   2026-07-05 (mechanical phase). Reads foundation off window.Ayre. */
+/* Ayre-UI · settings.js — Settings controls + the memory chip/review.
+   Load order: after workspace.js.  CONSUMES Ayre.{root,esc,el,getJSON,textEl,BRIDGE_DOWN}.
+   EXPOSES: nothing. Reacts to document events (ayre:memory-changed, ayre:draft-changed,
+   ayre:open-draft-review) dispatched by chat.js / core.js.
+   Contents:
+     - UI port              save the bridge port (POST /api/ui-port)
+     - handoff cooldown     rate-limit between handoffs
+     - memory-warning       the "getting long" soft threshold
+     - clear saved memory   double-confirm wipe (POST /api/memory/clear)
+     - memory toggle chip   the chat-header Memory on/off + confirm popover
+     - proposed-memory review   SECURITY: the draft/promote gate — the model can only
+                            PROPOSE a note; only the user promotes it to memory.md (Devlog #3)
+   Split from app.js 2026-07-05. */
 (function () {
   'use strict';
   var Ayre = window.Ayre;

@@ -1,7 +1,15 @@
-/* Ayre-UI setup — /api/system fan-out (renderSystem), Start/Stop + optimizer
-   (startCtl), the doctor (renderDoctor), and the health/telemetry poll. Split
-   from app.js 2026-07-05 (mechanical phase). Reads foundation + chat/visual
-   modules off window.Ayre. */
+/* Ayre-UI · setup.js — engine health, the Setup doctor, and launch controls.
+   Load order: after chat.js.  CONSUMES Ayre.{root,esc,el,getJSON,textEl,BRIDGE_DOWN}
+   plus (lazily) Ayre.{chatCtl,faviconCtl,ctxMeter,setTelemetry,handoffMinTurns}.
+   EXPOSES on window.Ayre: renderSystem, renderDoctor, startCtl.
+   Owns `lastLlamaUp` as a file-local var (shared renderSystem<->startCtl, same file).
+   Contents:
+     - renderSystem   fans /api/system health out to the topbar chips + every module
+     - startCtl       Start/Stop the engine + optimizer (preset selector + manual
+                      override) + the pre-launch fit banner
+     - the doctor     renderDoctor + artifactRow: the three-tier presence-check UI
+     - bootstrap      initial doctor refresh + the 8s /api/system health poll
+   Split from app.js 2026-07-05. */
 (function () {
   'use strict';
   var Ayre = window.Ayre;

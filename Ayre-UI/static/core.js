@@ -1,7 +1,11 @@
-/* Ayre-UI core — creates the shared window.Ayre namespace + foundation helpers
-   (theme, nav, DOM utilities, connection indicator). Loaded FIRST; every other
-   app-*.js reads helpers + module interfaces off window.Ayre. Split from app.js
-   2026-07-05 (mechanical phase — code relocated verbatim). */
+/* Ayre-UI · core.js — shared window.Ayre namespace + foundation helpers.
+   Load order (index.html): core -> visuals -> chat -> setup -> workspace -> settings.
+   EXPOSES on window.Ayre: root, BRIDGE_DOWN, el, esc, getJSON, textEl, handoffMinTurns.
+   CONSUMES: nothing — this file is the root of the dependency order.
+   Every other app-*.js re-aliases these off window.Ayre at its top, so call sites
+   stay bare (esc(...), el(...), getJSON(...)). Vendored: offline, no CDN, no build step.
+   SECURITY: esc() and textEl() are the two XSS guards for untrusted model/corpus text.
+   Split from app.js 2026-07-05. */
 window.Ayre = {};
 (function () {
   'use strict';
@@ -45,10 +49,10 @@ window.Ayre = {};
     if (html != null) d.innerHTML = html;
     return d;
   }
-  // Escapes the 5 HTML-significant chars. Quotes are escaped too (not just &<>) so
-  // esc() is safe in ATTRIBUTE contexts (e.g. data-url="...") and not only in element
-  // text — without this a model-authored link URL containing a " could break out of
-  // the attribute and inject an event handler (XSS). See Security_Patch_Devlog.md #4.
+  // SECURITY (XSS): escapes the 5 HTML-significant chars. Quotes are escaped too (not
+  // just &<>) so esc() is safe in ATTRIBUTE contexts (e.g. data-url="...") and not only
+  // in element text — without this a model-authored link URL containing a " could break
+  // out of the attribute and inject an event handler. See Security_Patch_Devlog.md #4.
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
   function getJSON(url) {
     return fetch(url, { headers: { 'Accept': 'application/json' } }).then(function (r) {
@@ -56,9 +60,9 @@ window.Ayre = {};
       return r.json();
     });
   }
-  // A div/span/etc. whose text is set via textContent — the ONLY safe path for
-  // untrusted corpus text (article titles + chunk bodies can contain < > &). el()'s
-  // third arg is innerHTML, so it must never carry corpus text.
+  // SECURITY (untrusted text): a div/span/etc. whose text is set via textContent — the
+  // ONLY safe path for untrusted corpus text (article titles + chunk bodies can contain
+  // < > &). el()'s third arg is innerHTML, so it must never carry corpus text.
   function textEl(tag, cls, text) {
     var d = document.createElement(tag);
     if (cls) d.className = cls;
@@ -69,7 +73,7 @@ window.Ayre = {};
      Offline = green (good: private), Online = amber (heads-up: connected).
      Uses navigator.onLine + browser events — no outbound requests. */
   (function wireConnectStatus() {
-    var el = document.getElementById('connectStatus');
+    var el = document.getElementById('connectStatus');  // NOTE: local DOM node; intentionally shadows the el() helper in this IIFE
     if (!el) return;
     function update() {
       el.innerHTML = navigator.onLine
@@ -81,8 +85,8 @@ window.Ayre = {};
     update();
   })();
 
-
+  /* ── namespace exports (read by visuals/chat/setup/workspace/settings.js) ── */
   Ayre.root = root; Ayre.BRIDGE_DOWN = BRIDGE_DOWN;
   Ayre.el = el; Ayre.esc = esc; Ayre.getJSON = getJSON; Ayre.textEl = textEl;
-  Ayre.handoffMinTurns = 1;   // checkIfEmpty floor; overwritten from /api/system
+  Ayre.handoffMinTurns = 1;   // checkIfEmpty floor; overwritten from /api/system (setup.js)
 })();

@@ -1,6 +1,19 @@
-/* Ayre-UI chat — markdown renderer, RAG sources, the chat stream controller
-   (chatCtl), quick-actions bar, external-URL modal, copy-code. Split from app.js
-   2026-07-05 (mechanical phase). Reads foundation + visual modules off window.Ayre. */
+/* Ayre-UI · chat.js — the chat surface: rendering + the stream controller.
+   Load order: after visuals.js.  CONSUMES Ayre.{root,esc,el,getJSON,textEl,BRIDGE_DOWN}
+   plus (lazily, at call time) Ayre.{ctxMeter,faviconCtl,ctxTendrils,handoffMinTurns}.
+   EXPOSES on window.Ayre: chatCtl  (read by setup.js's renderSystem/renderDoctor).
+   Contents:
+     - md renderer         escape-first markdown -> safe HTML (whitelist tags only)
+     - renderRagSources    the "Sources consulted" list under a grounded reply
+     - chatCtl (wireChat)  the SSE stream state machine: send, stream, tool-calls,
+                           context projection, the Handoff button + checkIfEmpty
+     - tool quick-actions  the chat-view action bar
+     - external-URL modal  confirms before opening a model-authored http(s) link
+     - copy-code button    per-code-block copy in the transcript
+   SECURITY: model output is UNTRUSTED. It reaches the DOM only via md.render (escape-
+   first) or textContent; links become buttons + a confirm modal, never live <a href>.
+   The Handoff write is gated to the button turn only (allow_handoff) — see checkIfEmpty
+   + doSend, and Security_Patch_Devlog #4/#7.  Split from app.js 2026-07-05. */
 (function () {
   'use strict';
   var Ayre = window.Ayre;
@@ -487,7 +500,7 @@
       dumpChatLog(function (filename) {
         if (filename && thread) {
           var note = el('div', 'memory-note');
-          note.textContent = '📄 Chat log saved: ' + filename;
+          note.textContent = '✓ Chat log saved: ' + filename;
           thread.appendChild(note);
           scrollToBottom();
         }
@@ -529,7 +542,7 @@
       dumpChatLog(function (filename) {
         if (filename && thread) {
           var note = el('div', 'memory-note');
-          note.textContent = '📄 Chat log saved: ' + filename;
+          note.textContent = '✓ Chat log saved: ' + filename;
           thread.appendChild(note);
           scrollToBottom();
         }
