@@ -5,7 +5,7 @@
     python -m ayre_ui --port P
 
 Loopback-ONLY: the bind host is hard-locked to 127.0.0.1 in code (security; see
-server.py -> _LOOPBACK_BIND_HOST) and cannot be changed via config or --host. The
+uiport.py -> _LOOPBACK_BIND_HOST) and cannot be changed via config or --host. The
 port comes from config/runtime.json -> ui.port (variable-first) unless overridden
 here.
 """
@@ -16,7 +16,7 @@ import sys
 import threading
 import webbrowser
 
-from .server import make_server, resolve_ui_address, detect_running_instance
+from .netserver import make_server, resolve_ui_address, detect_running_instance
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -32,7 +32,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Single-instance guard: if an Ayre bridge is already serving this port, don't
     # silently start a second copy (on Windows SO_REUSEADDR would let it double-bind
-    # -- see server.py's single-instance-guard note). Point the user at the running
+    # -- see netserver.py's single-instance-guard note). Point the user at the running
     # one instead of leaving a confusing zombie. A non-Ayre program on the port falls
     # through to make_server, whose exclusive bind raises OSError -> the clean message
     # below. detect_running_instance never raises.
