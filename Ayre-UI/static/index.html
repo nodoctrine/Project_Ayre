@@ -488,6 +488,13 @@
   </div>
 </div>
 
-<script src="/static/app.js"></script>
+<!-- app.js was split into these six files 2026-07-05; load order = dependency order
+     (core defines window.Ayre; every other file reads helpers + module interfaces off it). -->
+<script src="/static/core.js"></script>
+<script src="/static/visuals.js"></script>
+<script src="/static/chat.js"></script>
+<script src="/static/setup.js"></script>
+<script src="/static/workspace.js"></script>
+<script src="/static/settings.js"></script>
 </body>
 </html>
