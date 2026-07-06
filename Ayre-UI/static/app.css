@@ -776,7 +776,9 @@ section.view.active { display:flex; }
 /* Skills */
 .skill-list { display:flex; flex-direction:column; gap:10px; margin:0 0 16px; }
 .skill-card { border:1px solid var(--line); border-radius:7px; padding:12px 14px; }
-.skill-builtin { opacity:0.55; }
+/* Built-in card reads as a greyed default, but dim only its TEXT — a card-level opacity
+   would also dim the "Make your own" action button (opacity dims all descendants). */
+.skill-builtin .skill-card-head, .skill-builtin .skill-desc { opacity:0.55; }
 .skill-card-head { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
 .skill-name { font-size:13.5px; font-weight:600; color:var(--ink); }
 .skill-badge { font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:var(--ink-faint); background:var(--surface2,rgba(128,128,128,.12)); border-radius:3px; padding:2px 6px; }
@@ -784,6 +786,9 @@ section.view.active { display:flex; }
 .skill-new-btn { font-family:var(--mono); font-size:13px; color:var(--ink-faint); background:none; border:1px dashed var(--line); border-radius:6px; padding:8px 14px; cursor:pointer; width:100%; transition:color .15s,border-color .15s; }
 .skill-new-btn:hover { color:var(--ink-dim); border-color:var(--ink-dim); }
 .skill-new-btn:disabled { cursor:not-allowed; opacity:0.5; }
+/* "Make your own" on the built-in Handoff card — full opacity even though the card text is dimmed */
+.skill-customize-btn { font-family:var(--mono); font-size:11px; letter-spacing:0.04em; cursor:pointer; margin-top:4px; padding:5px 11px; border-radius:var(--pill-radius); border:1px solid var(--line); color:var(--ink-faint); background:transparent; transition:color .15s,border-color .15s; }
+.skill-customize-btn:hover { color:var(--ink-dim); border-color:var(--ink-dim); }
 /* Skill warning (internet download caution) */
 .skill-warning { font-family:var(--mono); font-size:11px; color:var(--ink-faint); line-height:1.5; margin:0 0 14px; padding-left:10px; border-left:2px solid var(--line-soft); }
 /* Skill builder form */

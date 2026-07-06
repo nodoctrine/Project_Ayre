@@ -34,6 +34,11 @@
     "warnings_rationale": "Pre-send composer warnings, all read off the projected occupancy (carried context + the draft message). chat_high_at / chat_full_at are fractions of the USABLE window; live_at is a fraction of the FULL window (n_ctx). Escalation, highest-severity first: live_at (>=95% of the full window -> blocking modal with a two-press confirm, advise splitting the message; supersedes chat_full so it ALSO saves a chat log) > chat_full_at (>=95% of usable -> blocking modal that saves a chat log before sending, handoff due) > chat_high_at (>=80% of usable -> inline advisory + soft double-press confirm). See Context_Management.md."
   },
 
+  "handoff": {
+    "min_substantive_turns": 1,
+    "min_substantive_turns_rationale": "checkIfEmpty floor for the Handoff button: the minimum number of assistant replies (with real content) that must already exist in the current chat before a handoff can be generated. A handoff summarises the conversation, so below this many substantive replies there is nothing to summarise -- the button blocks with 'Nothing to hand off yet' and spends NO model turn (server.py exposes this via /api/system -> handoff_min_substantive_turns; app.js enforces it client-side before firing). Raise it to require more of a session before a handoff is offered; 0 disables the guard."
+  },
+
   "memory": {
     "max_chars": 100000,
     "rationale": "Hard ceiling (characters) on saved memory AND on the staged draft. Confirmed memory is injected into every request, so unbounded growth means context bloat and slow sessions; the draft is capped too so a runaway model cannot fill the disk by looping save_memory. The model can only PROPOSE to a draft (it never writes confirmed memory directly), but this bounds both. This is the HARD safety backstop; the soft 'memory is getting long' nudge is separate and user-tunable (Settings -> memory_warning_chars, default 1500). ~100k chars is ~25k tokens: generous for legitimate notes while stopping MB-scale runaways. Lower it on small-context hardware."

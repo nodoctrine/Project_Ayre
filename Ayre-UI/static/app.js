@@ -6,6 +6,8 @@
   'use strict';
   var root = document.documentElement;
   var lastLlamaUp = false;  // latest /api/system health, shared with the Start control
+  var handoffMinTurns = 1;  // checkIfEmpty floor for the Handoff button; overwritten from
+                            // /api/system -> handoff_min_substantive_turns (config-driven)
   // One friendly, actionable line for "Ayre's local server is unreachable" — every
   // same-origin fetch failure in this page means exactly that.
   var BRIDGE_DOWN = 'Ayre\'s server isn\'t running — relaunch it (Start Ayre.cmd, or ' +
@@ -235,6 +237,7 @@
     var llama = document.getElementById('chip-llama');
     var up = sys.llama && sys.llama.healthy;
     lastLlamaUp = !!up;
+    if (typeof sys.handoff_min_substantive_turns === 'number') handoffMinTurns = sys.handoff_min_substantive_turns;
     if (chatCtl) chatCtl.setAvailable(lastLlamaUp);
     if (faviconCtl) faviconCtl.engine(lastLlamaUp);
     if (startCtl) startCtl.syncHealth();
@@ -1563,19 +1566,38 @@
     var handoffSavedThisTurn = false; // reset each turn; set when save_handoff fires
     var handoffConfirm = false;       // true while waiting for confirm on first handoff click
     var handoffConfirmTimer = null;
+    var emptyNoteTimer = null;        // auto-hides the "nothing to hand off yet" note
     var sendConfirmYellow = false;    // true while waiting for 2nd press on a CHAT-high (#2) send
     var sendYellowTimer = null;
     var lastProjectionVerdict = 'ok'; // tracks current pre-send projection verdict
 
+    // Built-in Handoff prompt: a defined generation procedure (structured headings), not a
+    // loose one-liner. Save stays button-gated (allow_handoff), so this is the only handoff
+    // path that can write a file. Draft copy — final voice comes in the whole-project Prose Pass.
     function buildHandoffPrompt() {
       var words = ctxMeter ? ctxMeter.wordBudget() : 600;
       return 'Look at the conversation above — only what is written in this chat window. ' +
-        'Write a session handoff note (aim for ' + words + ' words or fewer, but do not ' +
-        'cut important detail just to hit a word count — accuracy matters more than brevity) ' +
-        'covering: what we worked on, any decisions or preferences that came up, and where we ' +
-        'left off. Do not read any files or look for a previous handoff — just summarise what ' +
-        'you can see in this conversation. ' +
-        'Then call your save_handoff tool ONCE (not save_memory, not read_file) to save the note to the project folder.';
+        'Do not read any files, look for a previous handoff, or repeat anything already in ' +
+        'memory; summarise only what you can see here.\n\n' +
+        'Write a session handoff note (aim for ' + words + ' words or fewer, but do not cut ' +
+        'important detail just to hit a word count — accuracy matters more than brevity). ' +
+        'Organise it under four headings:\n' +
+        '  1. What we worked on — the focus of this session.\n' +
+        '  2. Decisions & preferences — anything decided, and preferences the user expressed.\n' +
+        '  3. Current state — what is done and working now, and anything left unfinished.\n' +
+        '  4. Next steps — the open items to pick up next session.\n\n' +
+        'Then call your save_handoff tool ONCE (not save_memory, not read_file) to save the ' +
+        'note to the project folder.';
+    }
+
+    // checkIfEmpty support: count assistant replies that actually carry content. A handoff
+    // summarises the conversation, so with none of these there is nothing to hand off.
+    function countSubstantiveReplies() {
+      var n = 0;
+      for (var i = 0; i < messages.length; i++) {
+        if (messages[i].role === 'assistant' && (messages[i].content || '').trim()) n++;
+      }
+      return n;
     }
 
     var handoffBtn = document.getElementById('handoffBtn');
@@ -2217,6 +2239,24 @@
 
     if (handoffBtn) handoffBtn.addEventListener('click', function () {
       if (busy || !available) return;
+
+      // checkIfEmpty (deterministic): a handoff summarises the conversation above, so if the
+      // model hasn't produced enough substantive replies yet there is nothing to hand off.
+      // Block here — spending NO model turn — instead of generating a summary of nothing.
+      // Threshold is config-driven (runtime.json -> handoff.min_substantive_turns, default 1).
+      if (countSubstantiveReplies() < handoffMinTurns) {
+        handoffConfirm = false;
+        if (handoffConfirmTimer) { clearTimeout(handoffConfirmTimer); handoffConfirmTimer = null; }
+        handoffBtn.textContent = 'Handoff →';
+        handoffBtn.classList.remove('confirming');
+        if (handoffNoteEl) {
+          handoffNoteEl.textContent = 'Nothing to hand off yet — have a conversation first.';
+          handoffNoteEl.hidden = false;
+        }
+        if (emptyNoteTimer) clearTimeout(emptyNoteTimer);
+        emptyNoteTimer = setTimeout(function () { if (handoffNoteEl) handoffNoteEl.hidden = true; }, 4000);
+        return;
+      }
 
       if (!handoffConfirm) {
         // First click: enter confirm state, show destination note
@@ -3388,6 +3428,32 @@
 
     newBtn.addEventListener('click', function () { showBuilder(null); });
     if (cancelBtn) cancelBtn.addEventListener('click', hideBuilder);
+
+    // "Make your own" on the built-in Handoff card: prefill the builder with an editable
+    // Session-Handoff template, saved as the user's OWN custom skill (id:null => create).
+    // A message-invoked skill cannot call save_handoff (that stays button-gated), so this
+    // template only DRAFTS the note in chat and reminds the user to press Handoff → to save.
+    // Draft copy — final voice comes in the whole-project Prose Pass.
+    var HANDOFF_TEMPLATE = {
+      id: null,
+      title: 'Session Handoff',
+      description: 'Drafts a structured end-of-session summary in the chat for you to review, then reminds you to press Handoff → to save it.',
+      workflow: [
+        'First, check whether this conversation contains substantive work. If there is nothing meaningful to summarise yet (an empty or trivial session), say so in one line and stop — do not invent a summary.',
+        '',
+        'Otherwise, look only at what is written in this chat window. Do not read any files, look for a previous handoff, or repeat anything already in memory.',
+        '',
+        'Write a session handoff note under four headings:',
+        '1. What we worked on — the focus of this session.',
+        '2. Decisions & preferences — anything decided, and preferences I expressed.',
+        '3. Current state — what is done and working now, and anything unfinished.',
+        '4. Next steps — the open items to pick up next session.',
+        '',
+        'Present the note in the chat for me to review. You cannot save it yourself — after I have read it, remind me to press the Handoff → button in the top bar to save it to my project folder (or to copy the text).'
+      ].join('\n')
+    };
+    var customizeBtn = document.getElementById('handoffCustomizeBtn');
+    if (customizeBtn) customizeBtn.addEventListener('click', function () { showBuilder(HANDOFF_TEMPLATE); });
     if (titleInput) titleInput.addEventListener('input', updateCounts);
     if (descInput) descInput.addEventListener('input', updateCounts);
 

@@ -310,6 +310,20 @@ def _save_handoff_cooldown(seconds: int) -> None:
     _save_user_settings(data)
 
 
+def _handoff_min_turns() -> int:
+    """checkIfEmpty floor for the Handoff button: the minimum number of substantive
+    assistant replies that must exist before a handoff can be generated. A ship-wide
+    default from config/runtime.json -> handoff.min_substantive_turns (not per-user,
+    unlike the cooldown). The browser enforces it before firing so an empty session
+    spends no model turn; this call just delivers the configured value via /api/system."""
+    cfg = load_runtime().get("handoff", {}) or {}
+    try:
+        v = int(cfg.get("min_substantive_turns", 1))
+    except (TypeError, ValueError):
+        return 1
+    return max(0, min(v, 100))
+
+
 def _memory_warning_chars() -> int:
     """Char count that triggers a 'memory is getting long' warning. Read from user_settings."""
     v = _load_user_settings().get("memory_warning_chars", _MEMORY_WARNING_CHARS_DEFAULT)
@@ -1516,6 +1530,7 @@ def _system_state(bound_port: int | None = None) -> dict:
             ]
         ),
         "handoff_cooldown_seconds": _handoff_cooldown(),
+        "handoff_min_substantive_turns": _handoff_min_turns(),
         "memory_warning_chars": _memory_warning_chars(),
     }
 
