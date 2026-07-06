@@ -70,7 +70,7 @@ def _system_state(bound_port: int | None = None) -> dict:
 class AyreUIHandler(BaseHTTPRequestHandler):
     server_version = "AyreUI/0.1"
 
-    # NOTE (F3): this handler relies on the stdlib default protocol_version = "HTTP/1.0"
+    # SECURITY (#8/F3): this handler relies on the stdlib default protocol_version = "HTTP/1.0"
     # (no keep-alive -- each connection serves one request, then closes). Several
     # handlers respond WITHOUT draining the request body (the do_POST/do_DELETE 404
     # fall-throughs, /api/memory/clear, /api/memory/draft/discard, /api/stop). That is
@@ -121,7 +121,7 @@ class AyreUIHandler(BaseHTTPRequestHandler):
         return candidate
 
     def _origin_ok(self) -> bool:
-        """CSRF guard for state-changing requests (POST/DELETE). The bridge has NO
+        """SECURITY (#2): CSRF guard for state-changing requests (POST/DELETE). The bridge has NO
         authentication, so 'did this request come from our own UI?' is enforced via
         the Origin header. A cross-site page's fetch carries its own Origin
         (e.g. https://evil.com); ours carries our loopback origin. Fail-safe:

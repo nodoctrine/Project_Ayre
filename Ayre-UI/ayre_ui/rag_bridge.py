@@ -75,7 +75,7 @@ def _maybe_inject_rag(messages: list, query_text: str, base: str) -> "object | N
     reference block into `messages` immediately before the last user message. Returns
     the Injection (for the sources event) or None when nothing was injected.
 
-    Injection is EPHEMERAL: `messages` is a per-request list (rebuilt from the
+    SECURITY: injection is EPHEMERAL -- `messages` is a per-request list (rebuilt from the
     browser's payload every turn), so the block reaches the model this turn only and
     is never persisted into stored history. NEVER raises into the chat path -- any
     failure just skips grounding (retrieval already swallows the common cases)."""

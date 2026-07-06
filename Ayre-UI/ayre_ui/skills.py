@@ -48,7 +48,7 @@ def _skills_max_count() -> int:
         v = _SKILLS_MAX_COUNT_DEFAULT
     return max(1, v)
 
-# Skill text enters the system prompt, so no field may be able to forge the
+# SECURITY (#10): skill text enters the system prompt, so no field may be able to forge the
 # prompt's own structure (Security_Practices.md §9 -- same reasoning as
 # filenames-as-DATA). Titles/descriptions live inside the <custom-skills>
 # catalog block; invoked workflows live inside a [SKILL INVOKED]…[END SKILL

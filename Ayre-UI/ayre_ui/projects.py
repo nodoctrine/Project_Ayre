@@ -13,7 +13,7 @@ from .memory import _workspace_path, _MEMORY_FILENAME, _MEMORY_DRAFT_FILENAME
 from .settings import _load_user_settings, _save_user_settings
 
 def _sanitize_filename(name: str) -> str | None:
-    """Strip directory components and reject unsafe names. Returns None on failure."""
+    """SECURITY (#6): strip directory components and reject unsafe names. Returns None on failure."""
     safe = Path(name).name
     if not safe or safe in (".", ".."):
         return None
@@ -92,7 +92,7 @@ def _sanitize_project_name(name: str) -> str | None:
 
 def _project_path(name: str | None = None, *, create: bool = True) -> Path:
     """Path to a project folder (default: active project). Creates it if needed,
-    UNLESS create=False -- paths reachable from an un-guarded GET must not mutate the
+    UNLESS create=False -- SECURITY (#8/F1): paths reachable from an un-guarded GET must not mutate the
     filesystem. A GET carries no CSRF guard, so an attacker-named ?project= must not
     be able to mkdir a directory in the workspace (see Security_Patch_Devlog F1).
     Raises ValueError if the resolved path would escape the workspace root."""

@@ -16,7 +16,7 @@ from .settings import _load_user_settings, _save_user_settings
 DEFAULT_UI_PORT = 2500
 PORT_MIN, PORT_MAX = 1000, 9999  # "4-digit localhost port"
 
-# --- Network-exposure lock (security) -------------------------------------
+# --- SECURITY (#1) Network-exposure lock -----------------------------------
 # Ayre binds to loopback ONLY. The bridge has NO authentication on any endpoint:
 # whoever can reach the port can chat with the model, upload files, start/stop the
 # engine, and poison persistent memory. So the bind host is a HARD security lock,

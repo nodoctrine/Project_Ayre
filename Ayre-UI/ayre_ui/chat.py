@@ -101,7 +101,7 @@ def chat_proxy(handler) -> None:
         if "read_memory" in active_tool_names else ""
     )
     # Skills: compact manifest (title + description) always in context so the
-    # model knows what's available. The custom-skill catalog is wrapped as DATA
+    # model knows what's available. SECURITY (#10): the custom-skill catalog is wrapped as DATA
     # (same trust treatment as filenames): user-saved text must not be able to
     # act as standing instructions just by existing. A workflow becomes
     # instructions ONLY via the [SKILL INVOKED] block below, which fires on a
@@ -152,7 +152,7 @@ def chat_proxy(handler) -> None:
     messages = [
         {"role": "system", "content": (
             f"Active project: {active_proj}\n"
-            # Filenames are untrusted (model-written today; RAG-written later), so
+            # SECURITY (#6): filenames are untrusted (model-written today; RAG-written later), so
             # present them as DATA inside a delimiter the model is told not to obey.
             # _sanitize_filename forbids < > " and newlines, so a filename cannot
             # break out of <files>…</files> or forge structure (Security_Practices.md §9).

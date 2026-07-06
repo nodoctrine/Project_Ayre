@@ -55,7 +55,7 @@ _INSTANCE_PROBE_TIMEOUT_SECONDS = 0.5  # default; overridable via runtime.json -
 
 
 class _SingleInstanceHTTPServer(ThreadingHTTPServer):
-    """ThreadingHTTPServer that refuses to co-bind a port another live process holds.
+    """SECURITY (single-instance guard): ThreadingHTTPServer that refuses to co-bind a port another live process holds.
     See the single-instance-guard note above for why this is Windows-scoped."""
     # Windows: don't inherit HTTPServer's SO_REUSEADDR (it enables the silent
     # double-bind). Unix: keep it (restart-friendly, no hijack risk there).

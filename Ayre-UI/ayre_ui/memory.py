@@ -30,7 +30,7 @@ def _workspace_path() -> Path:
     return p
 
 _MEMORY_FILENAME = "memory.md"              # confirmed, human-approved memory (injected as system)
-_MEMORY_DRAFT_FILENAME = "memory_draft.md"  # model-proposed memory, pending user review; NEVER injected
+_MEMORY_DRAFT_FILENAME = "memory_draft.md"  # SECURITY (#3): model-proposed, pending user review; NEVER injected
 
 _MEMORY_WARNING_CHARS_DEFAULT = 1500    # chars; overridable in Settings
 _MEMORY_MAX_CHARS_DEFAULT = 100000      # hard cap on memory + draft size; overridable in config/runtime.json -> memory.max_chars
@@ -71,7 +71,7 @@ def _save_memory_warning_chars(n: int) -> None:
 def _memory_max_chars() -> int:
     """Hard ceiling (chars) on confirmed memory AND the staged draft. Read from
     config/runtime.json -> memory.max_chars (variable-first); default if absent.
-    This is the safety backstop against runaway growth of always-injected memory;
+    SECURITY (#5): the safety backstop against runaway growth of always-injected memory;
     the soft warning threshold (_memory_warning_chars) is the separate user nudge."""
     cfg = load_runtime().get("memory", {}) or {}
     v = cfg.get("max_chars", _MEMORY_MAX_CHARS_DEFAULT)
@@ -139,7 +139,7 @@ def _promote_draft(content: str) -> dict:
     model proposal. Appends below a timestamp separator (same accumulation model as the
     old auto-save), clears the draft, and resets the draft dedup guard. Because a human
     approved this exact text, it is trusted and is legitimately injected as a system
-    message thereafter -- this is the trust boundary that closes the memory-injection
+    message thereafter -- SECURITY (#3): this is the trust boundary that closes the memory-injection
     hole (a model can stage a draft but can never write confirmed memory)."""
     content = (content or "").strip()
     if not content:

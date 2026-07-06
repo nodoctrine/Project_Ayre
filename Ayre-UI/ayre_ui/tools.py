@@ -294,7 +294,7 @@ def _tools_state() -> list:
 def _active_tools(allow_handoff: bool = False) -> list:
     """Tool definitions to expose to the model.
     Respects per-tool toggles; memory tools also require the memory chip to be on.
-    save_handoff is offered ONLY on a Handoff-button turn (allow_handoff=True): a button
+    SECURITY (#7): save_handoff is offered ONLY on a Handoff-button turn (allow_handoff=True): a button
     press is the unambiguous trust signal, so the model can never write a handoff on its
     own judgment or from injected 'do a handoff'-style data (Security_Patch_Devlog #7).
     It still also honours the per-tool toggle."""
@@ -432,7 +432,7 @@ def _deny_pending_write(token: str) -> dict:
 def _execute_tool(name: str, arguments: dict, *, allow_handoff: bool = False) -> dict:
     """Execute a tool call; return {"ok": bool, "result": str}."""
     try:
-        # Defense in depth (Security_Patch_Devlog #9): the per-tool toggle gates which
+        # SECURITY (#9) Defense in depth: the per-tool toggle gates which
         # tools are OFFERED to the model (_active_tools), but a model can hallucinate a
         # call to a tool it wasn't offered -- so a disabled tool must also refuse to
         # EXECUTE. Mirrors the save_handoff / memory re-checks below. Tools absent from
@@ -479,7 +479,7 @@ def _execute_tool(name: str, arguments: dict, *, allow_handoff: bool = False) ->
 
         if name == "save_handoff":
             global _last_handoff_write_time
-            # Defense in depth (Security_Patch_Devlog #7): save_handoff is only OFFERED on
+            # SECURITY (#7) Defense in depth: save_handoff is only OFFERED on
             # a Handoff-button turn, but a model can hallucinate a call to a tool it wasn't
             # offered -- so refuse to execute unless this turn is button-flagged.
             if not allow_handoff:

@@ -7,6 +7,30 @@
    trimmed to what the live shell renders now (topbar, nav, Setup, panes);
    chat/meter styles are ported when those components land.
    ─────────────────────────────────────────────────────────────────────── */
+
+/* ── CONTENTS (each area below is marked with a matching "── … ──" banner) ──
+   Theme system ....... :root vars + 7 theme palettes (gunmetal … matrix)
+   Global shell ....... body, grid/scanline backdrop, .app frame
+   Top bar ............ brand, status chips, theme switch
+   Body ............... nav rail + section host
+   Section scaffold ... panes, summary/fit banners, artifact rows, chips, notes
+   Settings ........... port chooser, clear-memory confirm
+   Setup .............. Start/Stop launcher, optimizer presets + manual override
+   Chat (live) ........ head, memory chip, handoff btn/CTA, tool-event cards,
+                        memory confirm/draft review, write-file gate, thread,
+                        messages, rendered markdown, liveness/speed, composer
+   Tip ticker ......... bottom scrolling strip
+   Reduced motion ..... attribute-driven animation freeze
+   Chat context meter . zone track + CHAT/LIVE bars + token trace (Slice 3)
+   Thinking visual .... tendril field + viz/motion appearance toggles
+   Hardware monitor ... offload split bars + live temps/util
+   Context warnings ... red-zone, memory-too-long, pre-send projection
+   Projects ........... chat-header selector + Tools-tab manager
+   Skills ............. list, builder form, custom cards
+   Files .............. upload zone + file rows
+   Tools .............. toggle cards, RAG panel, RAG sources, quick-actions
+   Misc ............... online chip, ext-link, code block, URL modal, scrollbar
+   ───────────────────────────────────────────────────────────────────────── */
 :root {
   --mono: "SF Mono", "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
   --sans: "Inter", -apple-system, system-ui, "Segoe UI", sans-serif;

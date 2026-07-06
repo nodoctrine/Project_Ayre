@@ -11,6 +11,15 @@
 <body>
 <div class="app">
 
+  <!-- ── PAGE MAP ──────────────────────────────────────────
+       Top bar (brand · status chips · theme switch)
+       Body: nav rail + host
+         Views: #view-chat · #view-setup · #view-updater · #view-tools (Workspace) · #view-settings
+       Modals (after .app): #ctxLimitModal · #ctxLiveModal · #urlWarningModal
+       Scripts (end of body, dependency/load order):
+         core → visuals → chat → setup → workspace → settings   (core defines window.Ayre)
+       ─────────────────────────────────────────────────────── -->
+
   <!-- ── TOP BAR ─────────────────────────────────────────── -->
   <div class="topbar">
     <span class="brand"><span class="dot"></span> Ayre</span>
@@ -199,7 +208,8 @@
             </aside>
           </div>
           <!-- Tip ticker: scrolls across the bottom of the chat view; hangs briefly
-               when each new tip's start reaches the left edge. Tips list in app.js.
+               when each new tip's start reaches the left edge. Tips list (TIPS) is in
+               visuals.js (moved there when app.js was split 2026-07-05).
                Must live INSIDE .chat (a flex column) so it renders as a bottom
                strip -- as a sibling of .chat it collapses to an invisible vertical
                sliver, since #view-chat is a flex ROW. -->
