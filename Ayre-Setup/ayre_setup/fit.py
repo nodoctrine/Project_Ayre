@@ -32,7 +32,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
-from .config import load_optimizer, load_tiers
+from .config import load_optimizer, load_tiers  # noqa: F401 -- load_tiers unused in fit.py; kept intentionally (flagged 2026-07-06)
 from .hardware import MachineProfile
 
 
