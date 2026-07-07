@@ -16,6 +16,19 @@ from pathlib import Path
 from . import platform_layer
 
 
+# ============================================================================
+# CONTENTS
+#   1 · JSON config loaders        - tiers / rerankers / runtime / optimizer
+#   2 · Binary-selection seam      - resolve_binary_path: (OS, GPU) -> llama build
+#   3 · Coaching matchers          - quant_coaching_for / moe_coaching_for
+#   4 · Machine-local user overlay - user_settings.json read/write + overrides
+#   5 · Model discovery            - reranker filenames / discover_chat_models
+#   6 · LaunchSpec                 - the resolved, inspectable launch description
+#   7 · build_launch_spec          - assemble a LaunchSpec from config (main entry)
+# ============================================================================
+
+
+# --- 1 · JSON config loaders ------------------------------------------------
 def _load_json(path: Path) -> dict:
     with path.open(encoding="utf-8") as f:
         return json.load(f)
@@ -45,6 +58,7 @@ def load_optimizer() -> dict:
     return _load_json(config_dir() / "optimizer.json")
 
 
+# --- 2 · Binary-selection seam ----------------------------------------------
 def load_backends() -> dict:
     """Backend binary selection matrix (config/backends.json): maps (OS, GPU
     vendor) -> which llama-server build to launch. Variable-first cross-platform
@@ -120,6 +134,7 @@ def resolve_binary_path(
     return path, f"{why} ({label}) -> {filename}"
 
 
+# --- 3 · Coaching matchers --------------------------------------------------
 def load_coaching() -> dict:
     """User-facing coaching copy (config/coaching.json): quant tradeoffs today,
     room for more surfaces later. Optional -- a missing or unparseable file just
@@ -202,11 +217,22 @@ def moe_coaching_for(model_info, coaching: dict | None = None) -> dict | None:
             "tip": tip}
 
 
-# --- Machine-local user overlay (per-machine, gitignored) -------------------
+# --- 4 · Machine-local user overlay (per-machine, gitignored) ---------------
 # The SAME overlay the UI writes (ayre_ui/server.py: config/user_settings.json).
 # Ayre-Setup owns the `optimizer` block: a per-machine manual context / GPU-split
 # override. Persisting here (not in the committed optimizer.json) means an override
 # travels with the box, survives updates, and never lands in the repo.
+
+# The `_comment` we stamp into the persisted overlay so a human who opens
+# user_settings.json understands the `optimizer` block. One constant (not two
+# inlined copies) keeps both writers -- set_manual_override / set_preset_override
+# -- byte-for-byte in sync. This is a JSON `_comment` field: engineering
+# annotation, NOT user-facing copy (a Prose-Pass non-goal / [SKIP]).
+_OPTIMIZER_OVERLAY_COMMENT = (
+    "Per-machine optimizer overrides (Ayre-Setup): `preset` = the "
+    "chosen policy; `context_tokens`/`n_gpu_layers` = manual override "
+    "(null = let the preset decide). Set via `cli override` or the UI.")
+
 
 def user_settings_path() -> Path:
     return config_dir() / "user_settings.json"
@@ -249,9 +275,7 @@ def set_manual_override(context_tokens: int | None, n_gpu_layers: int | None) ->
     opt = data.setdefault("optimizer", {})
     opt["context_tokens"] = context_tokens
     opt["n_gpu_layers"] = n_gpu_layers
-    opt["_comment"] = ("Per-machine optimizer overrides (Ayre-Setup): `preset` = the "
-                       "chosen policy; `context_tokens`/`n_gpu_layers` = manual override "
-                       "(null = let the preset decide). Set via `cli override` or the UI.")
+    opt["_comment"] = _OPTIMIZER_OVERLAY_COMMENT
     save_user_settings(data)
 
 
@@ -289,12 +313,11 @@ def set_preset_override(preset: str | None) -> None:
     else:
         opt = data.setdefault("optimizer", {})
         opt["preset"] = preset
-        opt["_comment"] = ("Per-machine optimizer overrides (Ayre-Setup): `preset` = the "
-                           "chosen policy; `context_tokens`/`n_gpu_layers` = manual override "
-                           "(null = let the preset decide). Set via `cli override` or the UI.")
+        opt["_comment"] = _OPTIMIZER_OVERLAY_COMMENT
     save_user_settings(data)
 
 
+# --- 5 · Model discovery ----------------------------------------------------
 class NoModelError(FileNotFoundError):
     """Raised when a launch is requested but no chat model .gguf is present.
 
@@ -334,6 +357,7 @@ def discover_chat_models(rerankers: dict | None = None) -> list[Path]:
     return found
 
 
+# --- 6 · LaunchSpec ----------------------------------------------------------
 @dataclass
 class LaunchSpec:
     """A fully resolved, inspectable description of one llama-server launch."""
@@ -366,6 +390,7 @@ class LaunchSpec:
         return args
 
 
+# --- 7 · build_launch_spec (assemble a LaunchSpec from config) --------------
 def _pick_best_fitting_model(
     discovered: list[Path],
     profile,
@@ -378,6 +403,8 @@ def _pick_best_fitting_model(
     Falls back to the smallest to minimise disk spill and hardware stress when
     nothing fits cleanly (the fit gate will warn the user).
     """
+    # Cycle guard (see build_launch_spec): .solver imports config, so this stays
+    # function-local -- do NOT hoist to the module top.
     from .solver import try_solve
 
     by_size = sorted(discovered, key=lambda p: p.stat().st_size, reverse=True)
@@ -446,7 +473,9 @@ def build_launch_spec(
     if auto is None:
         auto = bool(optimizer.get("solver", {}).get("auto_apply_on_start", False))
 
-    # Lazy imports avoid a config<->hardware/solver import cycle.
+    # Cycle guard: .hardware and .solver both import config, so importing them at
+    # the module top would be a circular import. EVERY .hardware / .solver import
+    # in this function is function-local ON PURPOSE -- do NOT hoist to the top.
     probe = None
     if tier is None:
         if auto:
@@ -514,7 +543,7 @@ def build_launch_spec(
     # machine, overriding the tier's seed/fallback. Falls back silently to the
     # tier values if the GGUF/probe can't be read (try_solve returns None).
     if auto:
-        from .solver import try_solve
+        from .solver import try_solve  # cycle guard -- keep function-local
         if probe is None:
             from .hardware import probe_machine
             probe = probe_machine()
