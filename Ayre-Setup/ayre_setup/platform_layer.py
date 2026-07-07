@@ -13,6 +13,35 @@ import subprocess
 from pathlib import Path
 
 
+# ============================================================================
+# CONTENTS
+#   1 · OS identity & paths        - current_os, ayre_usb_root
+#   2 · Process launch & lifecycle - llama_server_binary_name, popen_kwargs,
+#                                    terminate, find_listening_pids, terminate_pid
+#   3 · Hardware probe seam        - memory_bytes, logical_cpu_count, detect_gpus
+#   4 · Live temperature seam      - gpu_stats, cpu_temperature_c (+ wrappers)
+#   5 · Live utilization seam      - cpu_utilization_pct
+# ============================================================================
+
+# Subprocess wall-clock caps (seconds). Every external probe is bounded so a
+# hung tool can't stall Setup; PowerShell gets a longer budget for its slower
+# cold start. Variable-first: tune here, not at the call sites.
+_PORT_QUERY_TIMEOUT_S = 10       # netstat / lsof (Stop's port-owner lookup)
+_GPU_QUERY_TIMEOUT_S = 10        # nvidia-smi (detect + live stats)
+_POWERSHELL_TIMEOUT_S = 15       # powershell / Get-CimInstance (WMI, thermal)
+
+# CPU-temperature sanity window (degrees C). Readings outside this band are
+# rejected as placeholder / garbage rather than shown. Shared by the Windows
+# (ACPI) and POSIX (/sys) temperature paths.
+_CPU_TEMP_MIN_C = 0
+_CPU_TEMP_MAX_C = 150
+
+# Windows "Display adapters" device-class key (a fixed OS-defined GUID) -- the
+# registry path detect_gpus() walks for per-adapter VRAM.
+_DISPLAY_ADAPTER_CLASS_GUID = "{4d36e968-e325-11ce-bfc1-08002be10318}"
+
+
+# --- 1 · OS identity & paths ------------------------------------------------
 def current_os() -> str:
     """'Windows', 'Linux', or 'Darwin'."""
     return platform.system()
@@ -31,7 +60,9 @@ def ayre_usb_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+# --- 2 · Process launch & lifecycle -----------------------------------------
 def llama_server_binary_name() -> str:
+    """Platform-correct llama-server executable name."""
     return "llama-server.exe" if current_os() == "Windows" else "llama-server"
 
 
@@ -68,10 +99,12 @@ def find_listening_pids(port: int) -> list[int]:
 
 
 def _find_listening_pids_windows(port: int) -> list[int]:
+    """Port owners via `netstat -ano` (Windows)."""
     try:
+        # SECURITY: fixed argv, no shell=True; bounded timeout; [] on failure.
         out = subprocess.run(
             ["netstat", "-ano", "-p", "tcp"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=_PORT_QUERY_TIMEOUT_S,
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return []
@@ -89,11 +122,14 @@ def _find_listening_pids_windows(port: int) -> list[int]:
 
 
 def _find_listening_pids_posix(port: int) -> list[int]:
-    # Best-effort (Linux/macOS are post-v1). lsof is the most portable one-liner.
+    """Port owners via `lsof` -- the most portable one-liner (POSIX; best-effort,
+    Linux/macOS are post-v1)."""
     try:
+        # SECURITY: argv-list, no shell=True; `port` is an int, not shell-
+        # interpolated; bounded timeout; [] on failure.
         out = subprocess.run(
             ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=_PORT_QUERY_TIMEOUT_S,
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return []
@@ -120,7 +156,7 @@ def terminate_pid(pid: int) -> bool:
         return False
 
 
-# --- Hardware probe seam --------------------------------------------------
+# --- 3 · Hardware probe seam ------------------------------------------------
 # Raw, OS-specific numbers for the optimizer's machine profile. Kept here (not
 # in hardware.py) so a Linux/macOS port swaps only these. Stdlib-only: ctypes
 # for RAM, external `nvidia-smi` / Windows registry / WMI for VRAM. Every
@@ -178,10 +214,12 @@ def memory_bytes() -> tuple[int, int]:
 
 
 def logical_cpu_count() -> int:
+    """Logical CPU count (0 if the platform won't report it)."""
     return os.cpu_count() or 0
 
 
 def _vendor_from_name(name: str) -> str:
+    """Best-effort GPU vendor label from an adapter name string."""
     n = (name or "").lower()
     if any(k in n for k in ("nvidia", "geforce", "rtx", "gtx", "quadro", "tesla")):
         return "NVIDIA"
@@ -196,11 +234,12 @@ def _gpus_nvidia_smi() -> list[dict]:
     """NVIDIA via nvidia-smi -- the only source that also reports FREE VRAM
     (what conservative budgeting wants)."""
     try:
+        # SECURITY: fixed argv, no shell=True; bounded timeout; [] on failure.
         res = subprocess.run(
             ["nvidia-smi",
              "--query-gpu=name,memory.total,memory.free",
              "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=_GPU_QUERY_TIMEOUT_S,
         )
     except (OSError, subprocess.SubprocessError):
         return []
@@ -227,7 +266,7 @@ def _gpus_windows_registry() -> list[dict]:
     accurate total VRAM (unlike WMI's AdapterRAM, capped at 4GB). No free."""
     import winreg
 
-    base = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+    base = rf"SYSTEM\CurrentControlSet\Control\Class\{_DISPLAY_ADAPTER_CLASS_GUID}"
     gpus = []
     try:
         cls = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base)
@@ -270,11 +309,13 @@ def _gpus_windows_wmi() -> list[dict]:
     """Last resort: WMI AdapterRAM. NOTE: a uint32, so it caps/wraps above 4GB
     -- flagged unreliable upstream. Used only when nothing better answered."""
     try:
+        # SECURITY: fixed argv, no shell=True; static PS command, no interpolated
+        # input; bounded timeout; [] on failure.
         res = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command",
              "Get-CimInstance Win32_VideoController | "
              "ForEach-Object { \"$($_.Name)|$($_.AdapterRAM)\" }"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True, text=True, timeout=_POWERSHELL_TIMEOUT_S,
         )
     except (OSError, subprocess.SubprocessError):
         return []
@@ -312,7 +353,7 @@ def detect_gpus() -> list[dict]:
     return []
 
 
-# --- Live temperature seam ------------------------------------------------
+# --- 4 · Live temperature seam ----------------------------------------------
 # For the UI hardware monitor (protect-end-user-hardware: a glanceable thermal
 # read while a load runs). Best-effort + stdlib-only; any unavailable reading is
 # None so the UI shows "--" honestly instead of guessing. OS-specific, so it lives
@@ -333,10 +374,11 @@ def gpu_stats() -> list[dict]:
     Querying temperature + utilization together keeps the monitor to a single
     subprocess per poll. Either field is None if its column came back non-numeric."""
     try:
+        # SECURITY: fixed argv, no shell=True; bounded timeout; [] on failure.
         res = subprocess.run(
             ["nvidia-smi", "--query-gpu=temperature.gpu,utilization.gpu",
              "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=_GPU_QUERY_TIMEOUT_S,
         )
     except (OSError, subprocess.SubprocessError):
         return []
@@ -371,12 +413,14 @@ def _cpu_temp_windows() -> int | None:
     """ACPI thermal zone via WMI (CurrentTemperature is tenths of a Kelvin). Many
     machines return nothing here; that's expected and surfaces as None."""
     try:
+        # SECURITY: fixed argv, no shell=True; static PS command, no interpolated
+        # input; bounded timeout; None on failure.
         res = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command",
              "(Get-CimInstance -Namespace root/wmi -ClassName "
              "MSAcpi_ThermalZoneTemperature -ErrorAction Stop | "
              "Select-Object -First 1).CurrentTemperature"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True, text=True, timeout=_POWERSHELL_TIMEOUT_S,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -386,7 +430,7 @@ def _cpu_temp_windows() -> int | None:
     except ValueError:
         return None
     celsius = tenths_kelvin / 10.0 - 273.15
-    if celsius <= 0 or celsius > 150:  # sanity-reject placeholder / garbage values
+    if celsius <= _CPU_TEMP_MIN_C or celsius > _CPU_TEMP_MAX_C:  # reject garbage
         return None
     return int(round(celsius))
 
@@ -400,12 +444,12 @@ def _cpu_temp_posix() -> int | None:
                 celsius = int(fh.read().strip()) / 1000.0
         except (OSError, ValueError):
             continue
-        if 0 < celsius <= 150:
+        if _CPU_TEMP_MIN_C < celsius <= _CPU_TEMP_MAX_C:
             return int(round(celsius))
     return None
 
 
-# --- Live utilization seam ------------------------------------------------
+# --- 5 · Live utilization seam ----------------------------------------------
 # CPU/GPU *load* for the monitor's LOAD row -- the "how hard is each chip working
 # right now" the offload split can't show (the split is a launch-time decision; a
 # model with few CPU layers can still peg the CPU). GPU% rides along on gpu_stats()
