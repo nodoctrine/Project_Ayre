@@ -29,21 +29,40 @@ The actual GPU/CPU split that realizes a 'fits_split' is the solver's job
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from .config import load_optimizer, load_tiers
 from .hardware import MachineProfile
 
+
+# ============================================================================
+# CONTENTS
+#   1 · Unit helper           - GIB, _gib
+#   2 · Data contracts        - FitInputs, FitResult
+#   3 · Pure core             - compute_fit, _verdict_reason
+#   4 · Budget assemblers     - _ram_budget, _vram_budget
+#   5 · Assembler entrypoint  - estimate_fit
+# ============================================================================
+
+
+# --- 1 · Unit helper --------------------------------------------------------
 GIB = 1024 ** 3
+
+# fp16 reference width: the per-token KV seed is measured at fp16 (2 bytes/elem),
+# so a chosen precision's KV scales by (its bytes/elem) / this. Also the f16
+# fallback when a precision is missing from the config table.
+_FP16_BYTES_PER_ELEMENT = 2.0
 
 
 def _gib(num_bytes) -> float | None:
+    """Bytes -> GiB rounded to 2 dp; None passed through (for absent readings)."""
     if num_bytes is None:
         return None
     return round(num_bytes / GIB, 2)
 
 
+# --- 2 · Data contracts -----------------------------------------------------
 @dataclass(frozen=True)
 class FitInputs:
     """Everything the pure calculator needs -- already-resolved numbers."""
@@ -58,6 +77,8 @@ class FitInputs:
 
 @dataclass(frozen=True)
 class FitResult:
+    """The pure calculator's verdict + the numbers behind it. Frozen: enrich by
+    rebuilding via dataclasses.replace, never by mutating .rationale / .warnings."""
     weights_bytes: int
     kv_bytes: int
     overhead_bytes: int
@@ -81,9 +102,11 @@ class FitResult:
         return d
 
 
+# --- 3 · Pure core ----------------------------------------------------------
 def compute_fit(inp: FitInputs) -> FitResult:
     """Pure core: footprint vs budget -> verdict. No I/O."""
-    kv_bytes = int(inp.context_tokens * inp.per_token_kv_bytes_fp16 * (inp.kv_bytes_per_element / 2.0))
+    kv_bytes = int(inp.context_tokens * inp.per_token_kv_bytes_fp16
+                   * (inp.kv_bytes_per_element / _FP16_BYTES_PER_ELEMENT))
     weights = inp.model_bytes
     overhead = inp.compute_overhead_bytes
     footprint = weights + kv_bytes + overhead
@@ -138,6 +161,7 @@ def compute_fit(inp: FitInputs) -> FitResult:
 
 
 def _verdict_reason(verdict, fp, vram, ram, combined, deficit, headroom) -> str:
+    """One-line human rationale for a verdict (values already in GiB)."""
     return {
         "fits_in_vram": f"{fp} GiB fits entirely in {vram} GiB VRAM -> fully GPU-resident (ideal).",
         "fits_in_ram": f"{fp} GiB fits in {ram} GiB RAM -> CPU-only viable with no disk spill.",
@@ -146,7 +170,9 @@ def _verdict_reason(verdict, fp, vram, ram, combined, deficit, headroom) -> str:
     }[verdict]
 
 
+# --- 4 · Budget assemblers --------------------------------------------------
 def _ram_budget(profile: MachineProfile, opt: dict) -> tuple[int, str]:
+    """RAM budget (bytes) + its rationale string, from the probe + optimizer.json."""
     b = opt["budget"]
     basis = b.get("basis", "available")
     total = profile.ram_total_bytes
@@ -161,6 +187,7 @@ def _ram_budget(profile: MachineProfile, opt: dict) -> tuple[int, str]:
 
 
 def _vram_budget(profile: MachineProfile, opt: dict) -> tuple[int, str]:
+    """VRAM budget (bytes) + its rationale string; prefers free VRAM over total."""
     b = opt["budget"]
     headroom = b["vram_headroom_gib"] * GIB
     if profile.primary_vram_free_bytes is not None:
@@ -173,6 +200,7 @@ def _vram_budget(profile: MachineProfile, opt: dict) -> tuple[int, str]:
     return budget, reason
 
 
+# --- 5 · Assembler entrypoint -----------------------------------------------
 def estimate_fit(
     model_path: Path,
     context_tokens: int,
@@ -195,7 +223,7 @@ def estimate_fit(
     if kv_precision in kv_table:
         kv_bpe = float(kv_table[kv_precision])
     else:
-        kv_bpe = float(kv_table.get("f16", 2.0))
+        kv_bpe = float(kv_table.get("f16", _FP16_BYTES_PER_ELEMENT))
         warnings.append(f"Unknown KV precision '{kv_precision}'; assumed f16 ({kv_bpe} B/elem).")
 
     per_tok_kv = per_token_kv_bytes_fp16 or int(fp["default_per_token_kv_bytes_fp16"])
@@ -216,9 +244,14 @@ def estimate_fit(
         ram_budget_bytes=ram_budget,
     ))
 
-    # Enrich rationale/warnings with the assembler-level context.
-    result.rationale["model"] = f"{model_path.name}: weights ~= file size {_gib(model_bytes)} GiB."
-    result.rationale["ram_budget"] = ram_reason
-    result.rationale["vram_budget"] = vram_reason
-    result.warnings[:0] = warnings
-    return result
+    # Enrich with assembler-level context, then rebuild -- a frozen FitResult must be
+    # reconstructed (dataclasses.replace), never mutated in place. Order is load-bearing:
+    # rationale keys stay footprint/budget/verdict then model/ram_budget/vram_budget;
+    # assembler warnings prepend the pure ones (they name the inputs' caveats first).
+    enriched_rationale = {
+        **result.rationale,
+        "model": f"{model_path.name}: weights ~= file size {_gib(model_bytes)} GiB.",
+        "ram_budget": ram_reason,
+        "vram_budget": vram_reason,
+    }
+    return replace(result, rationale=enriched_rationale, warnings=warnings + result.warnings)
