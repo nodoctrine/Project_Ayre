@@ -38,6 +38,21 @@ from .gguf import GGUFError, read_model_info
 from .hardware import MachineProfile
 
 
+# ============================================================================
+# CONTENTS
+#   SolveResult      - the resolved plan (split + context + verdict + rationale)
+#   Pure helpers     - _place / _max_gpu_layers / _gpu_overhead_bytes
+#   solve()          - the engine: MANUAL-OVERRIDE branch + AUTO (preset) branch
+#   _verdict_reason  - verdict -> rationale sentence
+#   try_solve()      - safe wrapper (returns None instead of raising)
+# ============================================================================
+
+# The preset applied when none is chosen and config has no active_preset: the
+# quality-first policy (context = trained max, maximize the GPU layers that fit).
+# It is a config key in optimizer.json -> solver.presets (frozen contract).
+_DEFAULT_PRESET = "max_context"
+
+
 @dataclass
 class SolveResult:
     n_gpu_layers: int
@@ -54,7 +69,7 @@ class SolveResult:
     context_trained_max: int
     model_info: dict
     rationale: dict
-    preset: str = "max_context"        # active preset key (stable id) that produced this plan
+    preset: str = _DEFAULT_PRESET      # active preset key (stable id) that produced this plan
     preset_label: str = "Max Context"  # human-facing name for the UI/CLI
     manual: bool = False               # True when a user context/n_gpu_layers override was applied
     limit: str | None = None           # which budget the plan blows: None | "vram" | "ram" | "both"
@@ -67,6 +82,7 @@ class SolveResult:
         return d
 
 
+# --- pure helpers (siloed, individually reviewable) -------------------------
 def _place(n_layers, n_gpu, weights_per_layer, kv_per_layer, gpu_overhead, cpu_overhead):
     """VRAM/RAM used for a given offload count."""
     n_gpu = max(0, min(n_layers, n_gpu))
@@ -77,6 +93,8 @@ def _place(n_layers, n_gpu, weights_per_layer, kv_per_layer, gpu_overhead, cpu_o
 
 
 def _max_gpu_layers(n_layers, vram_for_model, weights_per_layer, kv_per_layer) -> int:
+    """Largest layer count whose per-layer (weights + KV) footprint fits
+    `vram_for_model`. Clamped to [0, n_layers]; returns n_layers if per-layer is 0."""
     per_layer = weights_per_layer + kv_per_layer
     if per_layer <= 0:
         return n_layers
@@ -93,6 +111,7 @@ def _gpu_overhead_bytes(sv: dict, ctx: int) -> int:
     return int((base + per_1k * (ctx / 1024.0)) * GIB)
 
 
+# --- solve (the engine) -----------------------------------------------------
 def solve(
     model_path: Path,
     profile: MachineProfile,
@@ -141,13 +160,13 @@ def solve(
             n_expert=mi.n_expert, n_expert_used=mi.n_expert_used)
 
     # Resolve the active preset (user-selectable policy: context cap + offload goal).
-    preset_name = (preset or sv.get("active_preset") or "max_context").lower()
+    preset_name = (preset or sv.get("active_preset") or _DEFAULT_PRESET).lower()
     presets = sv.get("presets", {})
     preset_cfg = presets.get(preset_name)
     if preset_cfg is None:
-        warnings.append(f"Unknown optimizer preset '{preset_name}'; using 'max_context'.")
-        preset_name = "max_context"
-        preset_cfg = presets.get("max_context", {})
+        warnings.append(f"Unknown optimizer preset '{preset_name}'; using '{_DEFAULT_PRESET}'.")
+        preset_name = _DEFAULT_PRESET
+        preset_cfg = presets.get(_DEFAULT_PRESET, {})
     offload_goal = preset_cfg.get("offload_goal", "fit")   # "fit" | "full_gpu"
     preset_label = preset_cfg.get("label", preset_name)
     preset_reason = preset_cfg.get("rationale", "")
@@ -197,6 +216,7 @@ def solve(
     limit: str | None = None
     speed_downgraded = False
 
+    # ==== MANUAL-OVERRIDE branch =============================================
     if manual:
         # ---- Manual override: honor the user's explicit context/split, evaluate the
         # REAL fit, and WARN about harm rather than silently 'fixing' it
@@ -284,6 +304,7 @@ def solve(
                     f"though up to {fit_gpu_max} would fit at {ctx} context -- the CPU is "
                     "doing most of the decode (slower). Raise n_gpu_layers toward "
                     f"{fit_gpu_max} for more speed." + moe_note)
+    # ==== AUTO branch (preset-driven search) =================================
     else:
         chosen = _search(offload_goal)
         if chosen is None and offload_goal == "full_gpu":
@@ -377,6 +398,7 @@ def solve(
     )
 
 
+# --- verdict rationale ------------------------------------------------------
 def _verdict_reason(verdict, n_gpu, n_layers, spill_gib, *, manual=False, limit=None) -> str:
     if verdict == "over_budget" and manual:
         if limit == "vram":
@@ -396,6 +418,7 @@ def _verdict_reason(verdict, n_gpu, n_layers, spill_gib, *, manual=False, limit=
     }[verdict]
 
 
+# --- try_solve (safe wrapper) -----------------------------------------------
 def try_solve(model_path: Path, profile: MachineProfile, errors: list | None = None,
               **kw) -> SolveResult | None:
     """Solve, but return None instead of raising if the GGUF can't be read -- so
