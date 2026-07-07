@@ -39,6 +39,7 @@ from .config import (
     user_settings_path,
 )
 from .fit import estimate_fit
+from .gate import evaluate_gate
 from .hardware import probe_machine
 from .solver import solve
 from .preflight import (
@@ -51,6 +52,22 @@ from .preflight import (
 from .server import LlamaServer, stop_running_server
 
 
+# ============================================================================
+# CONTENTS
+#   Fallback defaults · output helpers (_print_spec / _print_gate / _gib / ...)
+#   Commands: start · probe · fit · solve · override · stop · check
+#   main() - argparse subcommand table + dispatch
+# ============================================================================
+
+# Last-resort defaults when a tier profile in tiers.json is missing/malformed.
+# The tier normally supplies both (profile["context"]["tokens"] / ["kv_precision"]);
+# these apply only if that lookup falls through, so `fit`/`solve` still produce a
+# usable estimate instead of crashing on a bad/incomplete tier.
+_FALLBACK_CONTEXT_TOKENS = 16384
+_FALLBACK_KV_PRECISION = "q8_0"
+
+
+# --- output helpers ---------------------------------------------------------
 def _print_spec(spec: LaunchSpec) -> None:
     print("Launch spec")
     print("  binary       :", spec.binary)
@@ -88,6 +105,7 @@ def _print_add_model() -> None:
     print(ADD_MODEL_HINT.format(models_dir=models_dir()))
 
 
+# --- command: start (resolve a launch spec, gate it, run llama-server) ------
 def cmd_start(args: argparse.Namespace) -> int:
     # Gate on REQUIRED (engine + config) only. Missing rerankers are non-blocking
     # (RAG degrades, chat works); a missing model is a clean 'add a model' message.
@@ -122,7 +140,6 @@ def cmd_start(args: argparse.Namespace) -> int:
 
     # Step-4 fit-gate: turn the solver verdict into the protect-end-user-hardware
     # boundary before we commit to loading anything.
-    from .gate import evaluate_gate
     decision = evaluate_gate(spec)
     _print_gate(decision)
 
@@ -171,10 +188,12 @@ def cmd_start(args: argparse.Namespace) -> int:
     return 0
 
 
+# Shared GiB formatter for the probe/fit/solve inspector output below.
 def _gib(num_bytes) -> str:
     return "n/a" if num_bytes is None else f"{num_bytes / (1024 ** 3):.2f} GiB"
 
 
+# --- command: probe (report hardware + suggested tier) ----------------------
 def cmd_probe(args: argparse.Namespace) -> int:
     # Step 1 of the optimizer: report the real hardware + suggested tier, with the
     # rationale for every value (so a tester sees WHY their machine landed where).
@@ -202,6 +221,7 @@ def cmd_probe(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- command: fit (estimate memory footprint vs budget) --------------------
 def cmd_fit(args: argparse.Namespace) -> int:
     # Step 2 of the optimizer: estimate whether the chosen model+context fits in
     # this machine's memory budget, or would spill to disk. Reuses the live probe.
@@ -223,8 +243,8 @@ def cmd_fit(args: argparse.Namespace) -> int:
     tier = args.tier or profile.suggested_tier
     tprof = tiers.get(tier, {})
     tctx = tprof.get("context", {})
-    context = args.context or tctx.get("tokens", 16384)
-    kv = args.kv_precision or tctx.get("kv_precision", "q8_0")
+    context = args.context or tctx.get("tokens", _FALLBACK_CONTEXT_TOKENS)
+    kv = args.kv_precision or tctx.get("kv_precision", _FALLBACK_KV_PRECISION)
 
     res = estimate_fit(model_path, context, kv, profile)
 
@@ -254,6 +274,7 @@ def cmd_fit(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- command: solve (show the GPU/CPU split + context the solver picks) -----
 def cmd_solve(args: argparse.Namespace) -> int:
     # Step 3 inspector: show the GPU/CPU split + context the solver would launch
     # with on THIS machine, and why. This is exactly what `start` auto-applies.
@@ -265,7 +286,7 @@ def cmd_solve(args: argparse.Namespace) -> int:
 
     tiers = load_tiers().get("tiers", {})
     tier = args.tier or profile.suggested_tier
-    kv = args.kv_precision or tiers.get(tier, {}).get("context", {}).get("kv_precision", "q8_0")
+    kv = args.kv_precision or tiers.get(tier, {}).get("context", {}).get("kv_precision", _FALLBACK_KV_PRECISION)
 
     if args.model:
         model_path = next((m for m in models if m.name == args.model), None)
@@ -312,6 +333,7 @@ def cmd_solve(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- command: override (persist/show/clear per-machine optimizer choices) ---
 def _fmt_override(ctx, ngl, preset=None) -> None:
     default_note = "(shipped default: optimizer.json active_preset)"
     print(f"  preset         : {preset if preset is not None else default_note}")
@@ -360,6 +382,7 @@ def cmd_override(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- command: stop (kill whatever holds the llama-server port) --------------
 def cmd_stop(args: argparse.Namespace) -> int:
     # Stops whatever is serving the llama-server port -- works whether the engine
     # was launched here, from the UI, or in another terminal (we find it by port).
@@ -368,6 +391,7 @@ def cmd_stop(args: argparse.Namespace) -> int:
     return 0 if result["ok"] else 1
 
 
+# --- command: check (two-tier doctor: required artifacts + chat model) ------
 def cmd_check(args: argparse.Namespace) -> int:
     report = run_doctor()
 
@@ -415,6 +439,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- entrypoint (argparse subcommand table + dispatch) ----------------------
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ayre-setup")
     sub = parser.add_subparsers(dest="command", required=True)
